@@ -1,0 +1,264 @@
+create extension if not exists pgcrypto;
+create extension if not exists btree_gist;
+
+create table if not exists business (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text not null default '',
+  address text not null default '',
+  phone text not null default '',
+  instagram_url text default 'https://instagram.com',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists services (
+  id uuid primary key default gen_random_uuid(),
+  category text not null,
+  name text not null,
+  price numeric(10, 2) not null check (price >= 0),
+  duration_minutes integer not null check (duration_minutes > 0),
+  is_active boolean not null default true,
+  display_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists working_hours (
+  id uuid primary key default gen_random_uuid(),
+  day_of_week integer not null check (day_of_week between 0 and 6),
+  day_label text not null,
+  opens_at time,
+  closes_at time,
+  slot_interval_minutes integer not null default 30 check (slot_interval_minutes > 0),
+  is_closed boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (day_of_week)
+);
+
+create table if not exists bookings (
+  id uuid primary key default gen_random_uuid(),
+  service_id uuid not null references services(id) on delete restrict,
+  customer_first_name text not null,
+  customer_last_name text not null,
+  customer_phone text not null,
+  notes text,
+  booking_date date not null,
+  booking_time time not null,
+  duration_minutes integer not null check (duration_minutes > 0),
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected', 'cancelled')),
+  customer_confirmed boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  slot_range tsrange generated always as (
+    tsrange(
+      (booking_date + booking_time)::timestamp,
+      (booking_date + booking_time + make_interval(mins => duration_minutes))::timestamp,
+      '[)'
+    )
+  ) stored
+);
+
+alter table bookings
+  add constraint bookings_no_overlap
+  exclude using gist (
+    slot_range with &&
+  )
+  where (status in ('pending', 'approved'));
+
+create index if not exists bookings_booking_date_idx on bookings (booking_date);
+create index if not exists bookings_customer_phone_idx on bookings (customer_phone);
+create index if not exists services_display_order_idx on services (display_order);
+
+create table if not exists notifications (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  message text not null,
+  created_at timestamptz not null default now(),
+  is_read boolean not null default false,
+  user_id text not null,
+  type text not null default 'general'
+);
+
+create index if not exists notifications_user_id_created_at_idx on notifications (user_id, created_at desc);
+create index if not exists notifications_user_id_is_read_idx on notifications (user_id, is_read);
+
+create or replace function set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists set_business_updated_at on business;
+create trigger set_business_updated_at
+before update on business
+for each row
+execute function set_updated_at();
+
+drop trigger if exists set_services_updated_at on services;
+create trigger set_services_updated_at
+before update on services
+for each row
+execute function set_updated_at();
+
+drop trigger if exists set_working_hours_updated_at on working_hours;
+create trigger set_working_hours_updated_at
+before update on working_hours
+for each row
+execute function set_updated_at();
+
+drop trigger if exists set_bookings_updated_at on bookings;
+create trigger set_bookings_updated_at
+before update on bookings
+for each row
+execute function set_updated_at();
+
+alter publication supabase_realtime add table bookings;
+
+do $$
+begin
+  alter publication supabase_realtime add table notifications;
+exception
+  when duplicate_object then null;
+end;
+$$;
+
+alter table business enable row level security;
+alter table services enable row level security;
+alter table working_hours enable row level security;
+alter table bookings enable row level security;
+alter table notifications enable row level security;
+
+drop policy if exists "business public read" on business;
+create policy "business public read"
+on business
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "business public write" on business;
+create policy "business public write"
+on business
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "services public read" on services;
+create policy "services public read"
+on services
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "services public write" on services;
+create policy "services public write"
+on services
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "working_hours public read" on working_hours;
+create policy "working_hours public read"
+on working_hours
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "working_hours public write" on working_hours;
+create policy "working_hours public write"
+on working_hours
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "bookings public read" on bookings;
+create policy "bookings public read"
+on bookings
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "bookings public insert" on bookings;
+create policy "bookings public insert"
+on bookings
+for insert
+to anon, authenticated
+with check (status = 'pending');
+
+drop policy if exists "bookings public update" on bookings;
+create policy "bookings public update"
+on bookings
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "notifications public read" on notifications;
+create policy "notifications public read"
+on notifications
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "notifications public insert" on notifications;
+create policy "notifications public insert"
+on notifications
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "notifications public update" on notifications;
+create policy "notifications public update"
+on notifications
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "notifications public delete" on notifications;
+create policy "notifications public delete"
+on notifications
+for delete
+to anon, authenticated
+using (true);
+
+insert into business (name, description, address, phone, instagram_url)
+select
+  'Yael nails',
+  'מניקור, ג''ל ובנייה באווירה נקייה, רגועה ומדויקת.',
+  'נחל צלמון 12',
+  '058-560-9500',
+  'https://instagram.com'
+where not exists (select 1 from business);
+
+insert into services (category, name, price, duration_minutes, display_order)
+select * from (
+  values
+    ('טיפולי ידיים', 'בניה בטיפס הפוך', 230, 120, 1),
+    ('טיפולי ידיים', 'לק ג''ל + מבנה אנטומי', 110, 90, 2),
+    ('טיפולי ידיים', 'הסרה לק גל', 20, 20, 3),
+    ('טיפולי ידיים', 'ציור', 10, 10, 4),
+    ('טיפולי ידיים', 'פרנץ', 10, 10, 5),
+    ('טיפולי ידיים', 'השלמה', 10, 30, 6)
+) as seed(category, name, price, duration_minutes, display_order)
+where not exists (select 1 from services);
+
+insert into working_hours (day_of_week, day_label, opens_at, closes_at, slot_interval_minutes, is_closed)
+select * from (
+  values
+    (0, 'ראשון', '17:00'::time, '20:00'::time, 30, false),
+    (1, 'שני', '15:40'::time, '20:00'::time, 20, false),
+    (2, 'שלישי', '15:00'::time, '20:00'::time, 30, false),
+    (3, 'רביעי', null::time, null::time, 30, true),
+    (4, 'חמישי', '15:30'::time, '20:00'::time, 30, false),
+    (5, 'שישי', null::time, null::time, 30, true)
+) as seed(day_of_week, day_label, opens_at, closes_at, slot_interval_minutes, is_closed)
+where not exists (select 1 from working_hours);

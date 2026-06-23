@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ניהול העסק</title>
+  <meta
+    name="description"
+    content="עמוד הניהול של בעלת העסק: לוח בקרה, יומן, בקשות תור, לקוחות, שירותים, שעות ופרטי העסק."
+  >
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="owner-body">
+  <header class="owner-header">
+    <div class="owner-brand">
+      <strong id="ownerBrandName">שם העסק שלך</strong>
+      <span id="ownerBrandDescription">ניהול העסק</span>
+    </div>
+    <div class="owner-header-actions">
+      <a class="ghost-button" href="index.html">חזרה לאתר</a>
+      <button class="danger-button is-hidden" id="ownerLogoutButton" type="button">התנתקות</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="owner-login-shell" id="ownerLoginGate">
+      <div class="panel-card">
+        <div class="section-head">
+          <h2>כניסה לניהול</h2>
+          <p>זה הדף הנפרד של בעלת העסק. מכאן מנהלים את התורים, השירותים, השעות ופרטי העסק.</p>
+        </div>
+
+        <form id="ownerLoginForm" class="booking-form">
+          <label class="field">
+            <span>שם משתמש</span>
+            <input type="text" name="username" required>
+          </label>
+          <label class="field">
+            <span>סיסמה</span>
+            <input type="password" name="password" required>
+          </label>
+          <button class="primary-button" type="submit">כניסה לניהול</button>
+        </form>
+      </div>
+    </section>
+
+    <div class="owner-layout is-hidden" id="ownerLayout">
+      <aside class="owner-sidebar">
+        <div class="panel-card owner-sidebar-card">
+          <div class="section-head compact-head">
+            <h3>ניהול מהיר</h3>
+            <p>רק הדברים שבאמת עוזרים לעסק כזה.</p>
+          </div>
+          <nav class="owner-nav">
+            <a href="#ownerOverview">לוח בקרה <span>←</span></a>
+            <a href="#ownerCalendarSection">יומן <span>←</span></a>
+            <a href="#ownerBookingsSection">בקשות תור <span>←</span></a>
+            <a href="#ownerCustomersSection">לקוחות והערות <span>←</span></a>
+            <a href="#ownerServicesSection">שירותים ומחירים <span>←</span></a>
+            <a href="#ownerHoursSection">שעות עבודה <span>←</span></a>
+            <a href="#ownerSpecialHoursSection">שעות מיוחדות <span>←</span></a>
+            <a href="#ownerBlockedSlotsSection">חסימת שעות <span>←</span></a>
+            <a href="#ownerBusinessSection">פרטי העסק <span>←</span></a>
+            <a href="#ownerAccessSection">כניסה לניהול <span>←</span></a>
+            <a href="#ownerResetSection">איפוס <span>←</span></a>
+          </nav>
+        </div>
+      </aside>
+
+      <div class="owner-main">
+        <section class="panel-card owner-section-anchor" id="ownerOverview">
+          <div class="section-head">
+            <h2>לוח בקרה</h2>
+            <p>כאן רואים תמונת מצב מהירה: מה מחכה לאישור, מה קורה היום, ואילו דברים באמת דורשים תשומת לב.</p>
+          </div>
+          <div class="owner-stats-grid" id="ownerStatsGrid"></div>
+          <div class="owner-tips-grid" id="ownerTipsGrid"></div>
+        </section>
+
+        <section class="panel-card owner-section-anchor" id="ownerCalendarSection">
+          <div class="section-head">
+            <h2>יומן בעלת העסק</h2>
+            <p>בוחרים יום בלוח ורואים את כל התורים של אותו יום, כולל מצב התור וכפתור מהיר ליומן.</p>
+          </div>
+          <div class="seller-calendar">
+            <div class="calendar-card seller-calendar-card">
+              <div class="calendar-head">
+                <button class="icon-button" id="sellerCalendarNextButton" type="button" aria-label="חודש הבא">‹</button>
+                <strong id="sellerCalendarMonthLabel">מאי 2026</strong>
+                <button class="icon-button" id="sellerCalendarPrevButton" type="button" aria-label="חודש קודם">›</button>
+              </div>
+              <div class="calendar-weekdays">
+                <span>א</span>
+                <span>ב</span>
+                <span>ג</span>
+                <span>ד</span>
+                <span>ה</span>
+                <span>ו</span>
+                <span>ש</span>
+              </div>
+              <div class="calendar-grid" id="sellerCalendarGrid"></div>
+            </div>
+            <div class="seller-calendar-list" id="sellerCalendarList"></div>
+          </div>
+        </section>
+
+        <section class="panel-card owner-section-anchor" id="ownerBookingsSection">
+          <div class="section-head">
+            <h2>בקשות תור</h2>
+            <p>כאן מאשרים, דוחים, פותחים ביומן, ומבטלים תורים כשצריך.</p>
+          </div>
+          <div class="owner-bookings-filters" id="ownerBookingsFilters" aria-label="סינון תורים בניהול">
+            <button class="owner-bookings-filter is-active" type="button" data-owner-booking-filter="all">
+              <span>הכול</span>
+              <strong data-owner-filter-count="all">0</strong>
+            </button>
+            <button class="owner-bookings-filter" type="button" data-owner-booking-filter="today">
+              <span>היום</span>
+              <strong data-owner-filter-count="today">0</strong>
+            </button>
+            <button class="owner-bookings-filter" type="button" data-owner-booking-filter="pending">
+              <span>ממתינים</span>
+              <strong data-owner-filter-count="pending">0</strong>
+            </button>
+            <button class="owner-bookings-filter" type="button" data-owner-booking-filter="approved">
+              <span>מאושרים</span>
+              <strong data-owner-filter-count="approved">0</strong>
+            </button>
+            <button class="owner-bookings-filter" type="button" data-owner-booking-filter="cancelled">
+              <span>מבוטלים</span>
+              <strong data-owner-filter-count="cancelled">0</strong>
+            </button>
+          </div>
+          <div id="sellerBookingsList" class="cards-list"></div>
+        </section>
+
+        <section class="panel-card owner-section-anchor" id="ownerCustomersSection">
+          <div class="section-head">
+            <h2>לקוחות והערות</h2>
+            <p>כאן שומרים הערות פנימיות שרק בעלת העסק רואה, כמו העדפות, רגישויות או מה חשוב לזכור.</p>
+          </div>
+          <label class="field owner-customer-search-field">
+            <span>חיפוש לקוחה</span>
+            <input id="ownerCustomerSearch" type="search" placeholder="חפשי לפי שם, טלפון או הערה">
+          </label>
+          <div id="ownerCustomersList" class="cards-list customer-notes-list"></div>
+        </section>
+
+        <div class="admin-grid">
+          <section class="admin-card owner-section-anchor" id="ownerBusinessSection">
+            <form id="businessForm">
+            <h3>פרטי העסק</h3>
+            <label class="field">
+              <span>שם העסק</span>
+              <input type="text" name="name" required>
+            </label>
+            <label class="field">
+              <span>תיאור קצר</span>
+              <input type="text" name="description" required>
+            </label>
+            <label class="field">
+              <span>כתובת</span>
+              <input type="text" name="address" required>
+            </label>
+            <label class="field">
+              <span>טלפון</span>
+              <input type="text" name="phone" required>
+            </label>
+            <label class="field">
+              <span>קישור לאינסטגרם</span>
+              <input type="url" name="instagramUrl" placeholder="https://instagram.com/your-page">
+            </label>
+
+            <label class="field">
+              <span>הודעת הכנה לפני תור</span>
+              <textarea name="preparationMessage" rows="3" placeholder="למשל: נא להגיע בלי לק קודם, ולהגיע בזמן."></textarea>
+            </label>
+
+            <div class="business-media-editor">
+              <section class="business-media-card">
+                <h4>תמונת קאבר</h4>
+                <div class="business-media-preview business-media-preview-cover" id="ownerCoverPreview"></div>
+                <label class="field">
+                  <span>בחירת קובץ מהמחשב</span>
+                  <input type="file" name="coverImageFile" accept="image/*">
+                </label>
+                <button class="ghost-button" type="button" data-clear-image="cover">איפוס תמונת קאבר</button>
+              </section>
+
+              <section class="business-media-card">
+                <h4>תמונת פרופיל</h4>
+                <div class="business-media-preview business-media-preview-avatar" id="ownerAvatarPreview"></div>
+                <label class="field">
+                  <span>בחירת קובץ מהמחשב</span>
+                  <input type="file" name="profileImageFile" accept="image/*">
+                </label>
+                <button class="ghost-button" type="button" data-clear-image="profile">איפוס תמונת פרופיל</button>
+              </section>
+            </div>
+
+            <button class="primary-button" type="submit">שמירת פרטי עסק</button>
+            </form>
+          </section>
+
+          <section class="admin-card owner-section-anchor" id="ownerAccessSection">
+            <form id="sellerCredentialsForm">
+            <h3>פרטי כניסה לניהול</h3>
+            <label class="field">
+              <span>שם משתמש</span>
+              <input type="text" name="username" required>
+            </label>
+            <label class="field">
+              <span>סיסמה חדשה</span>
+              <input type="password" name="password" placeholder="אם לא רוצים לשנות, משאירים ריק">
+            </label>
+            <button class="primary-button" type="submit">שמירת פרטי ההתחברות</button>
+            </form>
+          </section>
+
+          <section class="admin-card admin-card-wide owner-section-anchor" id="ownerServicesSection">
+            <form id="servicesForm">
+            <h3>שירותים ומחירים</h3>
+            <p class="admin-helper">כאן מעדכנים את רשימת השירותים שהלקוחות רואות במסך הראשון של קביעת התור.</p>
+            <div id="servicesEditor" class="editor-list"></div>
+            <button class="ghost-button" id="addServiceButton" type="button">הוספת שירות</button>
+            <button class="primary-button" type="submit">שמירת שירותים</button>
+            </form>
+          </section>
+
+          <section class="admin-card admin-card-wide owner-section-anchor" id="ownerHoursSection">
+            <form id="hoursForm">
+            <h3>ימים ושעות עבודה</h3>
+            <p class="admin-helper">
+              לכל יום יש שעת פתיחה, שעת סגירה ומרווח בין תורים. אם כתוב 30, זה אומר שאפשר להתחיל תור חדש כל 30 דקות.
+            </p>
+            <div id="hoursEditor" class="editor-list"></div>
+            <button class="primary-button" type="submit">שמירת שעות עבודה</button>
+            </form>
+          </section>
+
+          <section class="admin-card admin-card-wide owner-section-anchor" id="ownerSpecialHoursSection">
+            <h3>שעות מיוחדות לתאריך מסוים</h3>
+            <p class="admin-helper">
+              כאן מגדירים חריגה חד פעמית ליום מסוים. למשל חג, חופשה, או יום שבו עובדים בשעות אחרות מהרגיל.
+            </p>
+
+            <form id="specialHoursForm" class="special-hours-form">
+              <div class="special-hours-form-grid">
+                <label class="field">
+                  <span>תאריך מיוחד</span>
+                  <input type="date" name="specialDate" required>
+                </label>
+
+                <label class="field">
+                  <span>שעת פתיחה</span>
+                  <input type="text" name="specialOpen" placeholder="10:00">
+                </label>
+
+                <label class="field">
+                  <span>שעת סגירה</span>
+                  <input type="text" name="specialClose" placeholder="18:00">
+                </label>
+
+                <label class="field">
+                  <span>מרווח בין תורים</span>
+                  <input type="number" name="specialInterval" min="5" step="5" value="30">
+                </label>
+
+                <label class="field special-hours-closed-field">
+                  <span>מצב מיוחד</span>
+                  <label class="checkbox-field">
+                    <input type="checkbox" name="specialClosed">
+                    <span>היום הזה סגור</span>
+                  </label>
+                </label>
+
+                <label class="field special-hours-note-field">
+                  <span>הערה קצרה (לא חובה)</span>
+                  <input type="text" name="specialNote" placeholder="למשל ערב חג, חופשה או יום קצר">
+                </label>
+              </div>
+
+              <button class="primary-button" type="submit">שמירת שעות מיוחדות</button>
+            </form>
+
+            <div id="specialHoursList" class="cards-list special-hours-list"></div>
+          </section>
+
+          <section class="admin-card admin-card-wide owner-section-anchor" id="ownerBlockedSlotsSection">
+            <h3>חסימת שעות ידנית</h3>
+            <p class="admin-helper">
+              כאן אפשר לחסום שעה מסוימת בלי לסגור יום שלם. הלקוחה פשוט לא תראה את השעה הזאת בזמן קביעת התור.
+            </p>
+
+            <form id="blockedSlotsForm" class="blocked-slot-form">
+              <div class="blocked-slot-form-grid">
+                <label class="field">
+                  <span>תאריך</span>
+                  <input type="date" name="blockedDate" required>
+                </label>
+
+                <label class="field">
+                  <span>שעה</span>
+                  <select name="blockedTime" required></select>
+                </label>
+
+                <label class="field blocked-slot-note-field">
+                  <span>סיבה קצרה (לא חובה)</span>
+                  <input type="text" name="blockedNote" placeholder="למשל הפסקה, יציאה או זמן פרטי">
+                </label>
+              </div>
+
+              <button class="primary-button" type="submit">חסימת שעה</button>
+            </form>
+
+            <div id="blockedSlotsList" class="cards-list blocked-slots-list"></div>
+          </section>
+
+          <section class="admin-card admin-card-wide owner-section-anchor" id="ownerResetSection">
+            <h3>איפוס מערכת</h3>
+            <p class="admin-helper">
+              כאן אפשר לאפס את כל הנתונים השמורים במערכת, כולל תורים, לקוחות, שירותים, תמונות והגדרות.
+            </p>
+            <button class="danger-button" id="resetBusinessTemplateButton" type="button">איפוס מלא</button>
+          </section>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="modal is-hidden" id="calendarChoiceModal">
+    <div class="modal-backdrop" id="closeCalendarChoiceModal"></div>
+    <div class="modal-card">
+      <h3>הוספה ליומן</h3>
+      <div class="calendar-choice-actions">
+        <button class="ghost-button" id="deviceCalendarButton" type="button">הוספה ליומן הרגיל</button>
+        <button class="ghost-button" id="googleCalendarButton" type="button">הוספה ליומן Google</button>
+      </div>
+      <button class="danger-button calendar-choice-cancel" id="cancelCalendarChoiceButton" type="button">ביטול</button>
+    </div>
+  </div>
+
+  <script src="notifications.js"></script>
+  <script src="owner.js"></script>
+</body>
+</html>

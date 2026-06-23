@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>אתר תורים לעסק</title>
+  <meta name="description" content="אתר הזמנת תורים מסודר לפי שלבים: שירות, צוות, תאריך, שעה ופרטים אישיים.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-block">
+      <strong id="brandName">שם העסק שלך</strong>
+      <span>מערכת תורים לעסק</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="notification-toggle" id="notificationBellButton" type="button" aria-label="מרכז ההתראות" aria-controls="notificationPanel" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 21a2.3 2.3 0 0 0 2.2-1.7H9.8A2.3 2.3 0 0 0 12 21Zm7-5.4c-.9-.9-1.8-2.2-1.8-6.2a5.3 5.3 0 0 0-4.4-5.2V3.9a.8.8 0 0 0-1.6 0v.3a5.3 5.3 0 0 0-4.4 5.2c0 4-1 5.3-1.8 6.2-.4.4-.5.8-.4 1.3.1.4.5.7 1 .7h12.8c.5 0 .9-.3 1-.7.1-.5 0-.9-.4-1.3Z"></path>
+        </svg>
+        <span class="notification-badge is-hidden" id="notificationBadge">0</span>
+      </button>
+      <button class="ghost-button" id="openCustomerLogin" type="button">התחברות לקוחה</button>
+      <button class="primary-button small-button" id="openSellerLogin" type="button">התחברות בעלת העסק</button>
+      <button class="ghost-button is-hidden" id="logoutButton" type="button">התנתקות</button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <section class="landing-card">
+      <div class="cover-image" id="businessCoverImage"></div>
+      <div class="landing-content">
+        <div class="avatar" id="businessAvatar" aria-hidden="true"></div>
+        <h1 id="businessName">שם העסק שלך</h1>
+        <p class="business-description" id="businessDescription">כתבי כאן תיאור קצר על העסק שלך.</p>
+        <div class="contact-row">
+          <a class="contact-chip" id="whatsAppLink" href="#" aria-label="וואטסאפ" title="וואטסאפ">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3a8.5 8.5 0 0 0-7.4 12.7L4 21l5.4-1.4A8.5 8.5 0 1 0 12 3Zm0 15.3a6.8 6.8 0 0 1-3.4-.9l-.4-.2-3.2.8.9-3.1-.2-.4A6.8 6.8 0 1 1 12 18.3Zm3.7-5.1-.9-.4c-.1-.1-.3 0-.4.1l-.5.7c-.1.1-.2.1-.4.1a5.6 5.6 0 0 1-2.7-2.4c-.1-.1-.1-.2 0-.4l.3-.4.2-.3a.5.5 0 0 0 0-.4l-.4-.9c-.1-.3-.3-.3-.4-.3h-.4a.7.7 0 0 0-.5.2 2 2 0 0 0-.6 1.5c0 .9.6 1.7.8 2 .1.1 1.4 2.2 3.5 3 .5.3 1 .4 1.4.5.6.2 1.2.2 1.6.1.5-.1 1.5-.6 1.7-1.1.2-.5.2-1 .2-1.1 0-.1-.1-.2-.3-.3Z"/>
+            </svg>
+          </a>
+          <a class="contact-chip" id="phoneLink" href="#" aria-label="טלפון" title="טלפון">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6.7 4h2.1c.4 0 .8.3.9.7l.8 3.4c.1.4 0 .8-.3 1L9 10.3a14 14 0 0 0 4.7 4.7l1.2-1.2c.3-.3.7-.4 1-.3l3.4.8c.4.1.7.5.7.9v2.1c0 .5-.4 1-.9 1A16.1 16.1 0 0 1 5.7 4.9c0-.5.5-.9 1-.9Z"/>
+            </svg>
+          </a>
+          <a class="contact-chip is-hidden" id="instagramLink" href="#" aria-label="אינסטגרם" title="אינסטגרם">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7.5 3h9A4.5 4.5 0 0 1 21 7.5v9a4.5 4.5 0 0 1-4.5 4.5h-9A4.5 4.5 0 0 1 3 16.5v-9A4.5 4.5 0 0 1 7.5 3Zm0 1.8A2.7 2.7 0 0 0 4.8 7.5v9a2.7 2.7 0 0 0 2.7 2.7h9a2.7 2.7 0 0 0 2.7-2.7v-9a2.7 2.7 0 0 0-2.7-2.7h-9Zm9.3 1.3a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2ZM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 1.8A3.2 3.2 0 1 0 12 15.2 3.2 3.2 0 0 0 12 8.8Z"/>
+            </svg>
+          </a>
+          <a class="contact-chip" id="wazeLink" href="#" aria-label="וייז" title="וייז">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 4.5a7.5 7.5 0 0 0-7.5 7.3c0 1.5.4 2.5 1.2 3.6l-1 2.5 2.8-.7a7.5 7.5 0 1 0 4.5-12.7Zm-3 7.8a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2Zm6 0a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2Zm-4.7 3.4h3.4a1.9 1.9 0 0 1-3.4 0Zm-.8 3.1a1.4 1.4 0 1 1-2.8 0h2.8Zm8 0a1.4 1.4 0 1 1-2.8 0h2.8Z"/>
+            </svg>
+          </a>
+        </div>
+        <div class="business-meta">
+          <span id="businessAddress">כתובת העסק</span>
+          <span class="business-phone-text is-hidden" id="businessPhoneText"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="wizard-card">
+      <div class="section-head">
+        <h2>קביעת תור</h2>
+        <p>הזרימה בנויה לפי שלבים, כמו אפליקציית תורים: בוחרים שירות, צוות, תאריך ושעה ואז מאשרים.</p>
+      </div>
+
+      <ol class="wizard-steps" id="wizardSteps" aria-label="שלבי קביעת תור">
+        <li class="wizard-step is-active" data-step-indicator="1">
+          <span class="wizard-step-number">1</span>
+          <span class="wizard-step-label">שירות</span>
+        </li>
+        <li class="wizard-step" data-step-indicator="2">
+          <span class="wizard-step-number">2</span>
+          <span class="wizard-step-label">צוות</span>
+        </li>
+        <li class="wizard-step" data-step-indicator="3">
+          <span class="wizard-step-number">3</span>
+          <span class="wizard-step-label">תאריך ושעה</span>
+        </li>
+        <li class="wizard-step" data-step-indicator="4">
+          <span class="wizard-step-number">4</span>
+          <span class="wizard-step-label">פרטים ואישור</span>
+        </li>
+      </ol>
+
+      <div class="change-mode-banner is-hidden" id="changeModeBanner">
+        <div class="change-mode-copy">
+          <strong>שינוי תור פעיל</strong>
+          <p id="changeModeText">כאן משנים תור קיים בלי לאבד את התור הישן עד לאישור.</p>
+        </div>
+        <button class="ghost-button" id="cancelChangeModeButton" type="button">ביטול שינוי</button>
+      </div>
+
+      <section class="wizard-panel is-active" id="servicesStep">
+        <div class="section-head compact-head">
+          <h3>בחירת שירות</h3>
+          <p>כל שירות מציג שם, מחיר ומשך בדקות.</p>
+        </div>
+        <div id="servicesCategories" class="categories-list"></div>
+        <div class="panel-actions">
+          <button class="primary-button" id="goToStaffStep" type="button">המשך לבחירת צוות</button>
+        </div>
+      </section>
+
+      <section class="wizard-panel" id="staffStep">
+        <div class="section-head compact-head">
+          <h3>בחירת איש צוות</h3>
+          <p>כרגע יש בעלת מקצוע אחת פעילה במערכת, אז פשוט ממשיכים איתה.</p>
+        </div>
+        <div id="staffCards" class="staff-grid"></div>
+        <div class="panel-actions split-actions">
+          <button class="ghost-button" id="backToServicesStep" type="button">חזרה</button>
+          <button class="primary-button" id="goToScheduleStep" type="button">המשך לבחירת תאריך</button>
+        </div>
+      </section>
+
+      <section class="wizard-panel" id="scheduleStep">
+        <div class="section-head compact-head">
+          <h3>בחירת תאריך ושעה</h3>
+          <p>הימים הזמינים מסומנים בלוח, ורק שעות פנויות באמת מוצגות מתחת.</p>
+        </div>
+
+        <div class="selected-summary" id="selectedSummary"></div>
+
+        <div class="calendar-card">
+          <div class="calendar-head">
+            <button class="icon-button" id="calendarNextButton" type="button" aria-label="חודש הבא">‹</button>
+            <strong id="calendarMonthLabel">מאי 2026</strong>
+            <button class="icon-button" id="calendarPrevButton" type="button" aria-label="חודש קודם">›</button>
+          </div>
+          <div class="calendar-weekdays">
+            <span>א</span>
+            <span>ב</span>
+            <span>ג</span>
+            <span>ד</span>
+            <span>ה</span>
+            <span>ו</span>
+            <span>ש</span>
+          </div>
+          <div class="calendar-grid" id="calendarGrid"></div>
+        </div>
+
+        <section class="today-availability">
+          <div class="today-availability-head">
+            <h3>שעות פנויות היום</h3>
+            <p id="todayAvailabilityText">בחרי שירות כדי לראות שעות פנויות להיום.</p>
+          </div>
+          <div class="today-slot-list" id="todaySlotsList"></div>
+        </section>
+
+        <section class="picker-block">
+          <div class="picker-head">
+            <h3>שעות זמינות</h3>
+            <p>השעות מחולקות לבוקר, צהריים וערב.</p>
+          </div>
+          <div id="timeGroups" class="time-groups"></div>
+          <div class="empty-state is-hidden" id="emptyTimesState">
+            <div class="empty-icon" aria-hidden="true">⌛</div>
+            <p>אין שעות זמינות ביום זה</p>
+          </div>
+        </section>
+
+        <div class="panel-actions split-actions">
+          <button class="ghost-button" id="backToStaffStep" type="button">חזרה</button>
+          <button class="primary-button" id="goToDetailsStep" type="button">המשך לפרטים</button>
+        </div>
+      </section>
+
+      <section class="wizard-panel" id="detailsStep">
+        <div class="section-head compact-head">
+          <h3>פרטים אישיים ואישור</h3>
+          <p>כאן בודקים את הסיכום הסופי ומאשרים את התור.</p>
+        </div>
+
+        <div class="summary-card" id="bookingSummaryCard"></div>
+
+        <div class="notice-box" id="detailsNotice">
+          כדי לאשר תור צריך להתחבר כלקוחה.
+        </div>
+
+        <section class="success-panel is-hidden" id="bookingSuccessPanel">
+          <div class="success-icon" aria-hidden="true">✓</div>
+          <h3 id="bookingSuccessTitle">ההזמנה נשלחה בהצלחה</h3>
+          <p id="bookingSuccessText">הבקשה נשמרה ומחכה לאישור של בעלת העסק.</p>
+          <div class="success-summary" id="bookingSuccessSummary"></div>
+          <div class="success-panel-actions">
+            <button class="ghost-button is-hidden" id="bookingSuccessCalendarButton" type="button">הוספה ליומן</button>
+          </div>
+        </section>
+
+        <form id="bookingForm" class="booking-form">
+          <label class="field">
+            <span>שם מלא</span>
+            <input type="text" name="fullName" required>
+          </label>
+          <label class="field">
+            <span>טלפון</span>
+            <input type="tel" name="phone" required>
+          </label>
+          <label class="field">
+            <span>הערות</span>
+            <textarea name="notes" rows="3" placeholder="לא חובה"></textarea>
+          </label>
+          <div class="panel-actions split-actions">
+            <button class="ghost-button" id="backToScheduleStep" type="button">חזרה</button>
+            <button class="primary-button" id="bookingSubmitButton" type="submit">קבע תור</button>
+          </div>
+        </form>
+      </section>
+    </section>
+
+    <section class="panel-card is-hidden" id="customerBookingsPanel">
+      <div class="section-head">
+        <h2>ההזמנות שלי</h2>
+        <p>כאן רואים את כל התורים שלך, מחולקים בצורה פשוטה ל־פעילות, הושלמו ובוטלו.</p>
+      </div>
+      <div class="customer-bookings-toolbar" id="customerBookingsFilters" role="tablist" aria-label="סינון ההזמנות שלי">
+        <button class="customer-bookings-filter is-active" type="button" data-booking-view="active">
+          <span>פעילות</span>
+          <strong data-booking-count="active">0</strong>
+        </button>
+        <button class="customer-bookings-filter" type="button" data-booking-view="completed">
+          <span>הושלמו</span>
+          <strong data-booking-count="completed">0</strong>
+        </button>
+        <button class="customer-bookings-filter" type="button" data-booking-view="cancelled">
+          <span>בוטלו</span>
+          <strong data-booking-count="cancelled">0</strong>
+        </button>
+      </div>
+      <div id="myBookingsList" class="cards-list"></div>
+    </section>
+
+    <section class="panel-card is-hidden" id="sellerPanel">
+      <div class="section-head">
+        <h2>ניהול העסק</h2>
+        <p>האזור הזה מיועד לבעלת העסק בלבד, וכל שינוי בו נשמר באמת בדפדפן המקומי.</p>
+      </div>
+
+      <div class="admin-grid">
+        <form id="businessForm" class="admin-card">
+          <h3>פרטי העסק</h3>
+          <label class="field">
+            <span>שם העסק</span>
+            <input type="text" name="name" required>
+          </label>
+          <label class="field">
+            <span>תיאור קצר</span>
+            <input type="text" name="description" required>
+          </label>
+          <label class="field">
+            <span>כתובת</span>
+            <input type="text" name="address" required>
+          </label>
+          <label class="field">
+            <span>טלפון</span>
+            <input type="text" name="phone" required>
+          </label>
+          <label class="field">
+            <span>קישור לאינסטגרם</span>
+            <input type="url" name="instagramUrl" placeholder="https://instagram.com/your-page">
+          </label>
+          <label class="field">
+            <span>הודעת הכנה לפני תור</span>
+            <textarea name="preparationMessage" rows="3" placeholder="למשל: נא להגיע בלי לק קודם, ולהגיע בזמן."></textarea>
+          </label>
+          <button class="primary-button" type="submit">שמירת פרטי עסק</button>
+        </form>
+
+        <form id="sellerCredentialsForm" class="admin-card">
+          <h3>כניסת בעלת העסק</h3>
+          <label class="field">
+            <span>שם משתמש</span>
+            <input type="text" name="username" required>
+          </label>
+          <label class="field">
+            <span>סיסמה חדשה</span>
+            <input type="password" name="password" placeholder="השאירי ריק כדי לא לשנות">
+          </label>
+          <button class="primary-button" type="submit">שמירת פרטי התחברות</button>
+        </form>
+
+        <form id="servicesForm" class="admin-card admin-card-wide">
+          <h3>שירותים ומחירים</h3>
+          <div id="servicesEditor" class="editor-list"></div>
+          <button class="ghost-button" id="addServiceButton" type="button">הוספת שירות</button>
+          <button class="primary-button" type="submit">שמירת שירותים</button>
+        </form>
+
+        <form id="hoursForm" class="admin-card admin-card-wide">
+          <h3>ימים ושעות עבודה</h3>
+          <p class="admin-helper">
+            כאן מגדירים לכל יום: שם היום, שעת פתיחה, שעת סגירה, וכמה דקות יש בין תור לתור.
+            לדוגמה: אם כתוב <strong>30</strong>, זה אומר שכל תור חדש יכול להתחיל כל 30 דקות.
+          </p>
+          <div id="hoursEditor" class="editor-list"></div>
+          <button class="primary-button" type="submit">שמירת שעות עבודה</button>
+        </form>
+
+        <section class="admin-card admin-card-wide">
+          <h3>יומן בעלת העסק</h3>
+          <div class="seller-calendar">
+            <div class="calendar-card seller-calendar-card">
+              <div class="calendar-head">
+                <button class="icon-button" id="sellerCalendarNextButton" type="button" aria-label="חודש הבא">‹</button>
+                <strong id="sellerCalendarMonthLabel">מאי 2026</strong>
+                <button class="icon-button" id="sellerCalendarPrevButton" type="button" aria-label="חודש קודם">›</button>
+              </div>
+              <div class="calendar-weekdays">
+                <span>א</span>
+                <span>ב</span>
+                <span>ג</span>
+                <span>ד</span>
+                <span>ה</span>
+                <span>ו</span>
+                <span>ש</span>
+              </div>
+              <div class="calendar-grid" id="sellerCalendarGrid"></div>
+            </div>
+            <div class="seller-calendar-list" id="sellerCalendarList"></div>
+          </div>
+        </section>
+
+        <section class="admin-card admin-card-wide">
+          <h3>בקשות תור</h3>
+          <div id="sellerBookingsList" class="cards-list"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal is-hidden" id="authModal">
+    <div class="modal-backdrop" id="closeModal"></div>
+    <div class="modal-card">
+      <div class="modal-tabs">
+        <button class="modal-tab is-active" type="button" data-auth-tab="customer">לקוחה</button>
+        <button class="modal-tab" type="button" data-auth-tab="seller">בעלת העסק</button>
+      </div>
+
+      <form id="customerLoginForm" class="auth-panel is-active">
+        <h3>כניסה / הרשמה ללקוחה</h3>
+        <p class="auth-helper">בפעם הראשונה ממלאים פרטים, טלפון וסיסמה. בפעמים הבאות נכנסים עם אותו טלפון וסיסמה.</p>
+        <label class="field">
+          <span>שם פרטי</span>
+          <input type="text" name="firstName" required>
+        </label>
+        <label class="field">
+          <span>שם משפחה</span>
+          <input type="text" name="lastName" required>
+        </label>
+        <label class="field">
+          <span>טלפון</span>
+          <input type="tel" name="phone" required>
+        </label>
+        <label class="field">
+          <span>סיסמה</span>
+          <input type="password" name="password" required>
+        </label>
+        <button class="primary-button" type="submit">כניסה כלקוחה</button>
+      </form>
+
+      <form id="sellerLoginForm" class="auth-panel">
+        <h3>התחברות בעלת העסק</h3>
+        <label class="field">
+          <span>שם משתמש</span>
+          <input type="text" name="username" required>
+        </label>
+        <label class="field">
+          <span>סיסמה</span>
+          <input type="password" name="password" required>
+        </label>
+        <button class="primary-button" type="submit">כניסה לניהול</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal is-hidden" id="calendarChoiceModal">
+    <div class="modal-backdrop" id="closeCalendarChoiceModal"></div>
+    <div class="modal-card">
+      <h3>הוספה ליומן</h3>
+      <div class="calendar-choice-actions">
+        <button class="ghost-button" id="deviceCalendarButton" type="button">הוספה ליומן הרגיל</button>
+        <button class="ghost-button" id="googleCalendarButton" type="button">הוספה ליומן Google</button>
+      </div>
+      <button class="danger-button calendar-choice-cancel" id="cancelCalendarChoiceButton" type="button">ביטול</button>
+    </div>
+  </div>
+
+  <div class="notification-panel is-hidden" id="notificationPanel" aria-hidden="true">
+    <div class="notification-panel-backdrop" id="notificationPanelBackdrop"></div>
+    <section class="notification-panel-card" aria-label="מרכז ההתראות">
+      <div class="notification-panel-head">
+        <div class="notification-panel-copy">
+          <h3>מרכז ההתראות</h3>
+          <p id="notificationPanelSubtitle">אין התראות פעילות כרגע</p>
+        </div>
+        <div class="notification-panel-actions">
+          <span class="notification-unread-count" id="notificationUnreadCount">0</span>
+          <button class="ghost-button small-button" id="markAllNotificationsReadButton" type="button">סמן הכל כנקרא</button>
+          <button class="icon-button notification-close-button" id="closeNotificationPanelButton" type="button" aria-label="סגירה">×</button>
+        </div>
+      </div>
+
+      <div class="notification-banner is-hidden" id="notificationBrowserBanner">
+        <strong id="notificationBrowserBannerTitle">התראות דפדפן</strong>
+        <p id="notificationBrowserBannerText">אפשר להפעיל התראות חיות כדי לקבל עדכונים על תורים ושינויים.</p>
+        <div class="notification-banner-actions">
+          <button class="ghost-button small-button" id="notificationBrowserPermissionButton" type="button">אפשר התראות</button>
+        </div>
+      </div>
+
+      <div class="notification-list" id="notificationList"></div>
+      <div class="notification-empty is-hidden" id="notificationEmptyState">
+        <strong>אין התראות עדיין</strong>
+        <p>כאן יופיעו עדכונים על תורים חדשים, שינויים וביטולים.</p>
+      </div>
+    </section>
+  </div>
+
+  <script src="notifications.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
