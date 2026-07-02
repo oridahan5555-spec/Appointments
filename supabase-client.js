@@ -420,6 +420,18 @@
     await client.auth.signOut();
   }
 
+  async function sendOwnerPasswordReset() {
+    const supabase = ensureClient();
+    if (!ownerEmail) {
+      throw new Error("חסר ownerEmail ב-supabase-config.js.");
+    }
+
+    const redirectTo = `${window.location.origin}${window.location.pathname}`;
+    const { error } = await supabase.auth.resetPasswordForEmail(ownerEmail, { redirectTo });
+    if (error) throw error;
+    return true;
+  }
+
   async function signInOrRegisterCustomer(payload) {
     const supabase = ensureClient();
     const phone = normalizePhone(payload?.phone);
@@ -802,6 +814,7 @@
     getCurrentUser,
     isOwnerUser,
     signInOwner,
+    sendOwnerPasswordReset,
     signOut,
     signInOrRegisterCustomer,
     updateOwnerCredentials,
