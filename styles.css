@@ -323,15 +323,16 @@ a.ghost-button.is-keyboard-pressed {
 
 .notification-bell-button {
   position: relative;
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   display: inline-grid;
   place-items: center;
+  flex: 0 0 auto;
   border: 1px solid var(--line);
-  border-radius: 50%;
+  border-radius: 14px;
   color: var(--text);
   background: linear-gradient(180deg, #fff, #faf8fc);
-  box-shadow: 0 10px 24px rgba(50, 40, 78, 0.08);
+  box-shadow: 0 8px 18px rgba(50, 40, 78, 0.08);
   cursor: pointer;
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -2110,6 +2111,70 @@ a.ghost-button {
   line-height: 1.6;
 }
 
+.waitlist-prompt {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid #e7d8f2;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fff, #faf6fd);
+  display: grid;
+  gap: 12px;
+}
+
+.waitlist-prompt-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.waitlist-prompt-copy p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.customer-history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.customer-history-head {
+  display: grid;
+  gap: 4px;
+  padding-inline: 2px;
+}
+
+.customer-history-head strong {
+  font-size: 15px;
+}
+
+.customer-history-head span {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.customer-history-item {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid #ece6f4;
+  background: #fbf9fe;
+}
+
+.customer-history-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.customer-history-row strong {
+  text-align: left;
+}
+
+.customer-history-item span {
+  color: var(--muted);
+}
 @media (min-width: 720px) {
   .services-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2146,13 +2211,76 @@ a.ghost-button {
 }
 
 @media (max-width: 719px) {
-  .topbar,
-  .topbar-actions,
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .brand-block {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .topbar-actions {
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+    max-width: 56%;
+  }
+
+  .topbar-actions .primary-button,
+  .topbar-actions .ghost-button,
+  .topbar-actions .danger-button {
+    min-height: 34px;
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1.2;
+    border-radius: 12px;
+  }
+
+  .notification-center {
+    flex: 0 0 auto;
+  }
+
+  .notification-bell-button {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    box-shadow: 0 6px 14px rgba(50, 40, 78, 0.08);
+  }
+
+  .notification-bell-button svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .notification-badge {
+    top: -4px;
+    inset-inline-start: -4px;
+    min-width: 16px;
+    height: 16px;
+    font-size: 9px;
+  }
+
+  .brand-block strong {
+    font-size: 15px;
+    line-height: 1.15;
+  }
+
+  .brand-block span {
+    font-size: 10px;
+  }
+
+  .owner-header-actions,
   .editor-row {
     display: grid;
   }
 
-  .topbar-actions,
   .owner-header-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: center;

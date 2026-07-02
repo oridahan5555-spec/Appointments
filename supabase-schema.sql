@@ -8,13 +8,13 @@ create table if not exists business (
   address text not null default '',
   phone text not null default '',
   instagram_url text default 'https://instagram.com',
-  features jsonb not null default '{"businessDescription":true,"preparationMessage":true,"socialLink":true,"whatsapp":true,"phone":true,"waze":true,"calendarExport":true,"customerRescheduling":true}'::jsonb,
+  features jsonb not null default '{"businessDescription":true,"preparationMessage":true,"socialLink":true,"whatsapp":true,"phone":true,"waze":true,"calendarExport":true,"customerRescheduling":true,"waitingList":true,"attendanceConfirmation":true}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 alter table business
-  add column if not exists features jsonb not null default '{"businessDescription":true,"preparationMessage":true,"socialLink":true,"whatsapp":true,"phone":true,"waze":true,"calendarExport":true,"customerRescheduling":true}'::jsonb;
+  add column if not exists features jsonb not null default '{"businessDescription":true,"preparationMessage":true,"socialLink":true,"whatsapp":true,"phone":true,"waze":true,"calendarExport":true,"customerRescheduling":true,"waitingList":true,"attendanceConfirmation":true}'::jsonb;
 
 create table if not exists services (
   id uuid primary key default gen_random_uuid(),
@@ -63,6 +63,43 @@ create table if not exists bookings (
     )
   ) stored
 );
+
+alter table bookings add column if not exists service_ids jsonb not null default '[]'::jsonb;
+alter table bookings add column if not exists service_names jsonb not null default '[]'::jsonb;
+alter table bookings add column if not exists attendance_confirmation_requested_at timestamptz;
+alter table bookings add column if not exists attendance_confirmation_status text not null default '' check (attendance_confirmation_status in ('', 'pending', 'confirmed', 'declined'));
+alter table bookings add column if not exists attendance_confirmation_answered_at timestamptz;
+
+create table if not exists customers (
+  id uuid primary key default gen_random_uuid(),
+  first_name text not null default '',
+  last_name text not null default '',
+  phone text not null unique,
+  password text not null default '',
+  owner_note text not null default '',
+  is_blocked boolean not null default false,
+  blocked_reason text not null default '',
+  blocked_at timestamptz,
+  no_show_count integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists waitlist_entries (
+  id uuid primary key default gen_random_uuid(),
+  customer_phone text not null,
+  customer_name text not null default '',
+  service_id uuid not null references services(id) on delete cascade,
+  service_name text not null default '',
+  booking_date date not null,
+  notes text not null default '',
+  status text not null default 'waiting' check (status in ('waiting', 'notified', 'removed')),
+  notified_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists waitlist_entries_booking_date_idx on waitlist_entries (booking_date, status);
+create index if not exists customers_phone_idx on customers (phone);
 
 alter table bookings
   add constraint bookings_no_overlap
@@ -122,6 +159,12 @@ before update on bookings
 for each row
 execute function set_updated_at();
 
+drop trigger if exists set_customers_updated_at on customers;
+create trigger set_customers_updated_at
+before update on customers
+for each row
+execute function set_updated_at();
+
 alter publication supabase_realtime add table bookings;
 
 do $$
@@ -137,6 +180,8 @@ alter table services enable row level security;
 alter table working_hours enable row level security;
 alter table bookings enable row level security;
 alter table notifications enable row level security;
+alter table customers enable row level security;
+alter table waitlist_entries enable row level security;
 
 drop policy if exists "business public read" on business;
 create policy "business public read"
@@ -233,6 +278,36 @@ on notifications
 for delete
 to anon, authenticated
 using (true);
+
+drop policy if exists "customers public read" on customers;
+create policy "customers public read"
+on customers
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "customers public write" on customers;
+create policy "customers public write"
+on customers
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "waitlist public read" on waitlist_entries;
+create policy "waitlist public read"
+on waitlist_entries
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "waitlist public write" on waitlist_entries;
+create policy "waitlist public write"
+on waitlist_entries
+for all
+to anon, authenticated
+using (true)
+with check (true);
 
 insert into business (name, description, address, phone, instagram_url)
 select

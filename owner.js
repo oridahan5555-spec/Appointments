@@ -11,7 +11,9 @@ const BUSINESS_FEATURE_FIELDS = {
   phone: "featurePhone",
   waze: "featureWaze",
   calendarExport: "featureCalendarExport",
-  customerRescheduling: "featureCustomerRescheduling"
+  customerRescheduling: "featureCustomerRescheduling",
+  waitingList: "featureWaitingList",
+  attendanceConfirmation: "featureAttendanceConfirmation"
 };
 
 const DEFAULT_OWNER_STAFF = {
@@ -40,7 +42,9 @@ const DEFAULT_DATA = {
       phone: true,
       waze: true,
       calendarExport: true,
-      customerRescheduling: true
+      customerRescheduling: true,
+      waitingList: true,
+      attendanceConfirmation: true
     }
   },
   sellerCredentials: {
@@ -64,6 +68,7 @@ const DEFAULT_DATA = {
   ],
   specialHours: [],
   blockedSlots: [],
+  waitlistEntries: [],
   bookings: [],
   notifications: [],
   users: [],
@@ -108,6 +113,7 @@ const sellerCalendarGrid = document.getElementById("sellerCalendarGrid");
 const sellerCalendarList = document.getElementById("sellerCalendarList");
 const ownerBookingsFilters = document.getElementById("ownerBookingsFilters");
 const sellerBookingsList = document.getElementById("sellerBookingsList");
+const waitlistList = document.getElementById("waitlistList");
 const ownerCustomerSearch = document.getElementById("ownerCustomerSearch");
 const ownerCustomersList = document.getElementById("ownerCustomersList");
 
@@ -162,6 +168,7 @@ function loadState() {
       workingHours: Array.isArray(parsed.workingHours) && parsed.workingHours.length ? parsed.workingHours : defaults.workingHours,
       specialHours: normalizeSpecialHours(parsed.specialHours),
       blockedSlots: normalizeBlockedSlots(parsed.blockedSlots),
+      waitlistEntries: normalizeWaitlistEntries(parsed.waitlistEntries),
       bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
       notifications: normalizeNotifications(parsed.notifications),
       users: Array.isArray(parsed.users) ? parsed.users : [],
@@ -188,6 +195,7 @@ function saveState() {
       workingHours: state.workingHours,
       specialHours: state.specialHours,
       blockedSlots: state.blockedSlots,
+      waitlistEntries: state.waitlistEntries,
       bookings: state.bookings,
       notifications: state.notifications,
       users: state.users,
@@ -224,6 +232,7 @@ function resetStateToDefaultTemplate() {
   state.workingHours = freshState.workingHours.map((item) => ({ ...item }));
   state.specialHours = [];
   state.blockedSlots = [];
+  state.waitlistEntries = [];
   state.bookings = [];
   state.notifications = [];
   state.users = [];
@@ -286,7 +295,12 @@ function normalizeUsers(users) {
       lastName: String(user?.lastName || "").trim(),
       phone: String(user?.phone || "").trim(),
       password: String(user?.password || ""),
-      owner_note: String(user?.owner_note || "").trim()
+      owner_note: String(user?.owner_note || "").trim(),
+      is_blocked: Boolean(user?.is_blocked),
+      blocked_reason: String(user?.blocked_reason || "").trim(),
+      blocked_at: String(user?.blocked_at || ""),
+      no_show_count: Number(user?.no_show_count || 0),
+      created_at: String(user?.created_at || new Date().toISOString())
     }))
     .filter((user) => normalizePhoneNumber(user.phone));
 }
@@ -297,15 +311,57 @@ function normalizeBookings(bookings, staff, services) {
   return bookings.map((booking) => {
     const service = services.find((item) => item.id === booking.service_id);
     const assignedStaff = staff.find((member) => member.id === booking.staff_id) || fallbackStaff;
+    const normalizedServiceIds = Array.isArray(booking.service_ids) && booking.service_ids.length
+      ? booking.service_ids.map((serviceId) => String(serviceId).trim()).filter(Boolean)
+      : booking.service_id
+        ? [String(booking.service_id).trim()]
+        : [];
+    const normalizedServiceNames = Array.isArray(booking.service_names) && booking.service_names.length
+      ? booking.service_names.map((serviceName) => String(serviceName).trim()).filter(Boolean)
+      : booking.service_name
+        ? [String(booking.service_name).trim()]
+        : service
+          ? [service.name]
+          : [];
 
     return {
       ...booking,
+      service_ids: normalizedServiceIds,
+      service_names: normalizedServiceNames,
+      service_name: String(booking.service_name || normalizedServiceNames.join(" + ") || service?.name || "").trim(),
       duration_minutes: Number(booking.duration_minutes || service?.duration || 30),
       arrival_status: normalizeArrivalStatus(booking.arrival_status, booking.status),
+      attendance_confirmation_requested_at: String(booking.attendance_confirmation_requested_at || ""),
+      attendance_confirmation_status: normalizeAttendanceConfirmationStatus(booking.attendance_confirmation_status),
+      attendance_confirmation_answered_at: String(booking.attendance_confirmation_answered_at || ""),
       staff_id: assignedStaff.id,
       staff_name: assignedStaff.name
     };
   });
+}
+
+function normalizeWaitlistEntries(entries) {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  return entries
+    .map((entry, index) => ({
+      id: String(entry?.id || `waitlist-${Date.now()}-${index}`),
+      customer_phone: String(entry?.customer_phone || "").trim(),
+      customer_name: String(entry?.customer_name || "").trim(),
+      service_id: String(entry?.service_id || "").trim(),
+      service_name: String(entry?.service_name || "").trim(),
+      booking_date: String(entry?.booking_date || "").trim(),
+      notes: String(entry?.notes || "").trim(),
+      status: ["waiting", "notified", "removed"].includes(String(entry?.status || "").trim())
+        ? String(entry.status).trim()
+        : "waiting",
+      created_at: String(entry?.created_at || new Date().toISOString()),
+      notified_at: String(entry?.notified_at || "")
+    }))
+    .filter((entry) => normalizePhoneNumber(entry.customer_phone) && entry.service_id && entry.booking_date)
+    .sort((left, right) => String(left.created_at).localeCompare(String(right.created_at)));
 }
 
 function normalizeNotifications(notifications) {
@@ -572,6 +628,32 @@ function notifyCustomerAppointmentUpdated(booking, updateText) {
   );
 }
 
+function notifyCustomerWaitlistOpened(waitlistEntry, cancelledBooking) {
+  if (!waitlistEntry || !cancelledBooking) {
+    return;
+  }
+
+  const timeText = cancelledBooking.booking_time ? ` בשעה ${cancelledBooking.booking_time}` : "";
+
+  pushAppNotification(
+    getCustomerNotificationUserId(waitlistEntry.customer_phone),
+    "התפנה מקום ברשימת ההמתנה",
+    `התפנה מקום ל${waitlistEntry.service_name} בתאריך ${formatDisplayDate(cancelledBooking.booking_date)}${timeText}.`,
+    "appointment_updated",
+    { browser: false }
+  );
+}
+
+function notifyCustomerAttendanceConfirmation(booking) {
+  pushAppNotification(
+    getBookingCustomerNotificationUserId(booking),
+    "אישור הגעה לתור",
+    `מחר יש לך תור ל${booking.service_name} ב${getBookingDateTimeText(booking)}. נשמח לדעת אם את מגיעה.`,
+    "appointment_updated",
+    { browser: false }
+  );
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -596,6 +678,15 @@ function getCustomerNoteRecord(phone) {
 
 function getCustomerNoteText(phone) {
   return getCustomerNoteRecord(phone)?.note || "";
+}
+
+function getCustomerRecordByPhone(phone) {
+  const normalizedPhone = normalizePhoneNumber(phone);
+  if (!normalizedPhone) {
+    return null;
+  }
+
+  return state.users.find((user) => isSamePhone(user.phone, normalizedPhone)) || null;
 }
 
 function getCustomerNoteMarkup(phone) {
@@ -653,6 +744,18 @@ function saveCustomerNote(phone, customerName, noteText) {
   if (relatedUser) {
     relatedUser.owner_note = cleanedNote;
   }
+}
+
+function toggleCustomerBlocked(phone) {
+  const customer = getCustomerRecordByPhone(phone);
+  if (!customer) {
+    return false;
+  }
+
+  customer.is_blocked = !customer.is_blocked;
+  customer.blocked_at = customer.is_blocked ? new Date().toISOString() : "";
+  customer.blocked_reason = customer.is_blocked ? "נחסם על ידי בעלת העסק" : "";
+  return customer.is_blocked;
 }
 
 function readFileAsDataUrl(file) {
@@ -774,6 +877,15 @@ function normalizeArrivalStatus(value, bookingStatus) {
   return "waiting";
 }
 
+function normalizeAttendanceConfirmationStatus(value) {
+  const normalized = String(value || "").trim();
+  if (["pending", "confirmed", "declined"].includes(normalized)) {
+    return normalized;
+  }
+
+  return "";
+}
+
 function formatArrivalStatus(status) {
   if (status === "arrived") {
     return "הגיעה";
@@ -785,6 +897,19 @@ function formatArrivalStatus(status) {
     return "לא הגיעה";
   }
   return "ממתינה";
+}
+
+function formatAttendanceConfirmationStatus(status) {
+  if (status === "confirmed") {
+    return "אישרה הגעה";
+  }
+  if (status === "declined") {
+    return "סימנה שלא תגיע";
+  }
+  if (status === "pending") {
+    return "ממתינה לאישור הגעה";
+  }
+  return "";
 }
 
 function buildArrivalStatusOptions(selectedStatus) {
@@ -883,6 +1008,80 @@ function finalizeApprovedChangeRequest(booking) {
   oldBooking.arrival_status = null;
   oldBooking.replaced_by_id = booking.id;
   return oldBooking;
+}
+
+function maybePromoteWaitlistForBooking(booking) {
+  if (!booking || state.business.features?.waitingList === false) {
+    return;
+  }
+
+  const nextEntry = state.waitlistEntries.find((entry) =>
+    entry.status === "waiting" &&
+    entry.booking_date === booking.booking_date &&
+    entry.service_id === booking.service_id
+  );
+
+  if (!nextEntry) {
+    return;
+  }
+
+  nextEntry.status = "notified";
+  nextEntry.notified_at = new Date().toISOString();
+  notifyCustomerWaitlistOpened(nextEntry, booking);
+}
+
+function requestAttendanceConfirmation(booking, options = {}) {
+  if (!booking || booking.status !== "approved" || state.business.features?.attendanceConfirmation === false) {
+    return false;
+  }
+
+  const tomorrowDate = localDateValue(new Date(Date.now() + 86400000));
+  if (booking.booking_date !== tomorrowDate && !options.force) {
+    return false;
+  }
+
+  if (booking.attendance_confirmation_requested_at) {
+    return false;
+  }
+
+  booking.attendance_confirmation_requested_at = new Date().toISOString();
+  booking.attendance_confirmation_status = "pending";
+  booking.attendance_confirmation_answered_at = "";
+  notifyCustomerAttendanceConfirmation(booking);
+  return true;
+}
+
+function runAttendanceConfirmationSweep() {
+  if (state.business.features?.attendanceConfirmation === false) {
+    return;
+  }
+
+  let changed = false;
+  state.bookings.forEach((booking) => {
+    if (requestAttendanceConfirmation(booking)) {
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    saveState();
+  }
+}
+
+function applyNoShowCounterChange(booking, nextArrivalStatus) {
+  const customer = getCustomerRecordByPhone(booking?.customer_phone);
+  if (!customer) {
+    return;
+  }
+
+  const previousStatus = String(booking.arrival_status || "");
+  if (previousStatus !== "no_show" && nextArrivalStatus === "no_show") {
+    customer.no_show_count = Number(customer.no_show_count || 0) + 1;
+  }
+
+  if (previousStatus === "no_show" && nextArrivalStatus !== "no_show") {
+    customer.no_show_count = Math.max(0, Number(customer.no_show_count || 0) - 1);
+  }
 }
 
 function clearRejectUndo(shouldRerender = false) {
@@ -1020,6 +1219,11 @@ function getBookingsThisMonthCount() {
   return state.bookings.filter((booking) => booking.booking_date.startsWith(currentMonth)).length;
 }
 
+function getNewCustomersThisMonthCount() {
+  const currentMonth = monthKey(new Date());
+  return state.users.filter((user) => String(user.created_at || "").startsWith(currentMonth)).length;
+}
+
 function getBusiestDayInfo() {
   const dayMap = {};
 
@@ -1102,6 +1306,16 @@ function renderOwnerStats() {
       value: getCancelledBookings().length,
       title: "ביטולים",
       text: "טוב לבדוק אם כדאי להציע שעות חלופיות כשיש ביטולים."
+    },
+    {
+      value: getBookingsThisMonthCount(),
+      title: "תורים החודש",
+      text: "כמה תורים נכנסו בחודש הנוכחי מכל המצבים."
+    },
+    {
+      value: getNewCustomersThisMonthCount(),
+      title: "לקוחות חדשות",
+      text: "כמה לקוחות חדשות נרשמו החודש למערכת."
     },
     {
       value: getRepeatCustomersCount(),
@@ -1212,6 +1426,9 @@ function buildOwnerCustomersDirectory() {
         name: "",
         note: "",
         bookingsCount: 0,
+        noShowCount: 0,
+        blocked: false,
+        history: [],
         lastBooking: null
       });
     }
@@ -1232,6 +1449,10 @@ function buildOwnerCustomersDirectory() {
     if (customer && user.owner_note && !customer.note) {
       customer.note = String(user.owner_note).trim();
     }
+    if (customer) {
+      customer.blocked = Boolean(user.is_blocked);
+      customer.noShowCount = Number(user.no_show_count || 0);
+    }
   });
 
   state.bookings.forEach((booking) => {
@@ -1245,6 +1466,15 @@ function buildOwnerCustomersDirectory() {
     }
 
     customer.bookingsCount += 1;
+    customer.history.push({
+      id: booking.id,
+      booking_date: booking.booking_date,
+      booking_time: booking.booking_time,
+      service_name: booking.service_name,
+      status: booking.status,
+      arrival_status: booking.arrival_status,
+      notes: booking.notes || ""
+    });
 
     const lastBookingKey = `${booking.booking_date} ${booking.booking_time}`;
     const currentKey = customer.lastBooking
@@ -1276,7 +1506,8 @@ function buildOwnerCustomersDirectory() {
     .map((customer) => ({
       ...customer,
       name: customer.name || "לקוחה ללא שם",
-      note: customer.note || getCustomerNoteText(customer.phone)
+      note: customer.note || getCustomerNoteText(customer.phone),
+      history: [...customer.history].sort((left, right) => `${right.booking_date} ${right.booking_time}`.localeCompare(`${left.booking_date} ${left.booking_time}`))
     }))
     .sort((left, right) => {
       const leftKey = left.lastBooking ? `${left.lastBooking.booking_date} ${left.lastBooking.booking_time}` : "";
@@ -1335,12 +1566,42 @@ function renderOwnerCustomers() {
       <article class="booking-card owner-customer-card" data-customer-phone="${escapeHtml(customer.normalizedPhone)}">
         <div class="booking-card-head">
           <strong>${escapeHtml(customer.name)}</strong>
-          <span class="status-pill status-special">${customer.bookingsCount} תורים</span>
+          <div class="booking-card-badges">
+            <span class="status-pill status-special">${customer.bookingsCount} תורים</span>
+            ${customer.blocked ? '<span class="status-pill status-cancelled">חסומה</span>' : ""}
+            ${customer.noShowCount ? `<span class="status-pill status-pending">${customer.noShowCount} אי-הגעות</span>` : ""}
+          </div>
         </div>
         <div class="booking-meta">
           <span>${escapeHtml(customer.phone)}</span>
           <span>${customer.lastBooking ? `${formatDisplayDate(customer.lastBooking.booking_date)} בשעה ${customer.lastBooking.booking_time}` : "עדיין אין תורים"}</span>
           <span>${customer.lastBooking ? escapeHtml(customer.lastBooking.service_name) : "לקוחה חדשה"}</span>
+        </div>
+        <div class="customer-history-list">
+          <div class="customer-history-head">
+            <strong>היסטוריית לקוחה</strong>
+            <span>מתי הגיעה, איזה שירות לקחה ואילו הערות נשמרו בתור</span>
+          </div>
+          ${(customer.history.slice(0, 5).map((historyItem) => `
+            <div class="customer-history-item">
+              <div class="customer-history-row">
+                <span>שירות</span>
+                <strong>${escapeHtml(historyItem.service_name)}</strong>
+              </div>
+              <div class="customer-history-row">
+                <span>מתי</span>
+                <strong>${formatDisplayDate(historyItem.booking_date)} בשעה ${historyItem.booking_time}</strong>
+              </div>
+              <div class="customer-history-row">
+                <span>מצב</span>
+                <strong>${historyItem.arrival_status ? formatArrivalStatus(historyItem.arrival_status) : formatStatus(historyItem.status)}</strong>
+              </div>
+              <div class="customer-history-row">
+                <span>הערות</span>
+                <strong>${escapeHtml(historyItem.notes || "ללא הערה")}</strong>
+              </div>
+            </div>
+          `).join("")) || '<div class="notice-box">עדיין אין היסטוריית תורים.</div>'}
         </div>
         <label class="field owner-note-field">
           <span>הערה פנימית על הלקוחה</span>
@@ -1355,6 +1616,47 @@ function renderOwnerCustomers() {
         <div class="owner-note-actions">
           <button class="primary-button save-customer-note-button" type="button" data-customer-phone="${escapeHtml(customer.normalizedPhone)}">שמירת הערה</button>
           ${customer.note ? `<button class="ghost-button clear-customer-note-button" type="button" data-customer-phone="${escapeHtml(customer.normalizedPhone)}">מחיקת הערה</button>` : ""}
+          <button class="${customer.blocked ? "danger-button" : "ghost-button"} toggle-customer-block-button" type="button" data-customer-phone="${escapeHtml(customer.normalizedPhone)}">${customer.blocked ? "שחרור חסימה" : "חסימת לקוחה"}</button>
+        </div>
+      </article>
+    `)
+    .join("");
+}
+
+function renderWaitlist() {
+  if (!waitlistList) {
+    return;
+  }
+
+  if (state.business.features?.waitingList === false) {
+    waitlistList.innerHTML = '<div class="notice-box">רשימת ההמתנה כבויה כרגע בהגדרות העסק.</div>';
+    return;
+  }
+
+  const entries = [...state.waitlistEntries]
+    .sort((left, right) => String(left.created_at).localeCompare(String(right.created_at)));
+
+  if (!entries.length) {
+    waitlistList.innerHTML = '<div class="notice-box">עדיין אין לקוחות ברשימת ההמתנה.</div>';
+    return;
+  }
+
+  waitlistList.innerHTML = entries
+    .map((entry) => `
+      <article class="booking-card ${entry.status === "notified" ? "status-card-approved" : "status-card-pending"}">
+        <div class="booking-card-head">
+          <strong>${escapeHtml(entry.customer_name || "לקוחה")}</strong>
+          <span class="status-pill status-${entry.status === "notified" ? "approved" : "pending"}">${entry.status === "notified" ? "נשלחה הודעה" : "ממתינה"}</span>
+        </div>
+        <div class="booking-meta">
+          <span>${escapeHtml(entry.customer_phone)}</span>
+          <span>${escapeHtml(entry.service_name)}</span>
+          <span>${formatDisplayDate(entry.booking_date)}</span>
+        </div>
+        ${entry.notes ? `<div class="booking-note">הערה: ${escapeHtml(entry.notes)}</div>` : ""}
+        <div class="booking-card-actions">
+          ${entry.status === "waiting" ? `<button class="ghost-button notify-waitlist-button" type="button" data-waitlist-id="${entry.id}">שליחת הודעה ידנית</button>` : ""}
+          <button class="danger-button remove-waitlist-button" type="button" data-waitlist-id="${entry.id}">הסרה מהרשימה</button>
         </div>
       </article>
     `)
@@ -1577,6 +1879,7 @@ function renderSellerBookings() {
         </div>
         ${getCustomerNoteMarkup(booking.customer_phone)}
         ${booking.notes ? `<div class="booking-note">הערה: ${booking.notes}</div>` : ""}
+        ${formatAttendanceConfirmationStatus(booking.attendance_confirmation_status) ? `<div class="booking-note">אישור הגעה: ${formatAttendanceConfirmationStatus(booking.attendance_confirmation_status)}</div>` : ""}
         ${
           booking.status === "approved"
             ? `
@@ -1603,6 +1906,7 @@ function renderSellerBookings() {
               ? `
                 <div class="seller-actions">
                   <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
+                  ${!booking.attendance_confirmation_requested_at && state.business.features?.attendanceConfirmation !== false ? `<button class="ghost-button send-attendance-confirmation-button" type="button" data-booking-id="${booking.id}">שליחת אישור הגעה</button>` : ""}
                   <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול תור</button>
                 </div>
               `
@@ -1835,11 +2139,13 @@ function renderBlockedSlotsManager() {
 }
 
 function rerenderAll() {
+  runAttendanceConfirmationSweep();
   renderHeader();
   renderOwnerStats();
   renderOwnerTips();
   renderSellerCalendar();
   renderSellerBookings();
+  renderWaitlist();
   renderOwnerCustomers();
   renderEditors();
   renderSpecialHoursManager();
@@ -1981,6 +2287,15 @@ sellerCalendarList.addEventListener("click", async (event) => {
     return;
   }
 
+  if (target.classList.contains("send-attendance-confirmation-button")) {
+    if (requestAttendanceConfirmation(booking, { force: true })) {
+      saveState();
+      rerenderAll();
+      appUi.toast("נשלחה בקשת אישור הגעה ללקוחה.", { variant: "success" });
+    }
+    return;
+  }
+
   if (!target.classList.contains("seller-cancel-booking-button")) {
     return;
   }
@@ -1997,6 +2312,7 @@ sellerCalendarList.addEventListener("click", async (event) => {
   booking.arrival_status = null;
   notifyOwnerAppointmentCancelled(booking, "בעל העסק");
   notifyCustomerAppointmentCancelledByOwner(booking);
+  maybePromoteWaitlistForBooking(booking);
   saveState();
   rerenderAll();
 });
@@ -2012,7 +2328,9 @@ sellerCalendarList.addEventListener("change", (event) => {
     return;
   }
 
-  booking.arrival_status = normalizeArrivalStatus(target.value, "approved");
+  const nextArrivalStatus = normalizeArrivalStatus(target.value, "approved");
+  applyNoShowCounterChange(booking, nextArrivalStatus);
+  booking.arrival_status = nextArrivalStatus;
   notifyOwnerAppointmentUpdated(booking, `עודכן מצב הגעה ל${formatArrivalStatus(booking.arrival_status)}`);
   notifyCustomerAppointmentUpdated(booking, `מצב ההגעה עודכן ל${formatArrivalStatus(booking.arrival_status)}`);
   saveState();
@@ -2171,16 +2489,27 @@ blockedSlotsList.addEventListener("click", (event) => {
 ownerCustomersList.addEventListener("click", (event) => {
   const saveButton = event.target.closest(".save-customer-note-button");
   const clearButton = event.target.closest(".clear-customer-note-button");
+  const toggleBlockButton = event.target.closest(".toggle-customer-block-button");
 
-  if (!saveButton && !clearButton) {
+  if (!saveButton && !clearButton && !toggleBlockButton) {
     return;
   }
 
-  const actionButton = saveButton || clearButton;
+  const actionButton = saveButton || clearButton || toggleBlockButton;
   const customerPhone = actionButton?.dataset.customerPhone || "";
   const customerCard = actionButton?.closest(".owner-customer-card");
   const noteField = customerCard?.querySelector(".owner-note-input");
   const customerName = noteField?.dataset.customerName || "";
+
+  if (toggleBlockButton) {
+    const isBlocked = toggleCustomerBlocked(customerPhone);
+    saveState();
+    rerenderAll();
+    appUi.toast(isBlocked ? "הלקוחה נחסמה לקביעת תורים חדשים." : "החסימה הוסרה מהלקוחה.", {
+      variant: isBlocked ? "warning" : "success"
+    });
+    return;
+  }
 
   if (clearButton) {
     saveCustomerNote(customerPhone, customerName, "");
@@ -2194,6 +2523,38 @@ ownerCustomersList.addEventListener("click", (event) => {
   }
 
   saveCustomerNote(customerPhone, customerName, noteField.value);
+  saveState();
+  rerenderAll();
+});
+
+waitlistList?.addEventListener("click", (event) => {
+  const notifyButton = event.target.closest(".notify-waitlist-button");
+  const removeButton = event.target.closest(".remove-waitlist-button");
+  const button = notifyButton || removeButton;
+
+  if (!button) {
+    return;
+  }
+
+  const entry = state.waitlistEntries.find((item) => item.id === button.dataset.waitlistId);
+  if (!entry) {
+    return;
+  }
+
+  if (removeButton) {
+    state.waitlistEntries = state.waitlistEntries.filter((item) => item.id !== entry.id);
+    saveState();
+    rerenderAll();
+    return;
+  }
+
+  entry.status = "notified";
+  entry.notified_at = new Date().toISOString();
+  notifyCustomerWaitlistOpened(entry, {
+    booking_date: entry.booking_date,
+    booking_time: "",
+    service_name: entry.service_name
+  });
   saveState();
   rerenderAll();
 });
@@ -2234,6 +2595,15 @@ sellerBookingsList.addEventListener("click", async (event) => {
     return;
   }
 
+  if (target.classList.contains("send-attendance-confirmation-button")) {
+    if (requestAttendanceConfirmation(booking, { force: true })) {
+      saveState();
+      rerenderAll();
+      appUi.toast("נשלחה בקשת אישור הגעה ללקוחה.", { variant: "success" });
+    }
+    return;
+  }
+
   if (target.classList.contains("seller-cancel-booking-button")) {
     if (!["pending", "approved"].includes(booking.status)) {
       return;
@@ -2248,6 +2618,7 @@ sellerBookingsList.addEventListener("click", async (event) => {
     booking.arrival_status = null;
     notifyOwnerAppointmentCancelled(booking, "בעל העסק");
     notifyCustomerAppointmentCancelledByOwner(booking);
+    maybePromoteWaitlistForBooking(booking);
     saveState();
     rerenderAll();
     return;
@@ -2299,7 +2670,9 @@ sellerBookingsList.addEventListener("change", (event) => {
     return;
   }
 
-  booking.arrival_status = normalizeArrivalStatus(target.value, "approved");
+  const nextArrivalStatus = normalizeArrivalStatus(target.value, "approved");
+  applyNoShowCounterChange(booking, nextArrivalStatus);
+  booking.arrival_status = nextArrivalStatus;
   notifyOwnerAppointmentUpdated(booking, `עודכן מצב הגעה ל${formatArrivalStatus(booking.arrival_status)}`);
   notifyCustomerAppointmentUpdated(booking, `מצב ההגעה עודכן ל${formatArrivalStatus(booking.arrival_status)}`);
   saveState();

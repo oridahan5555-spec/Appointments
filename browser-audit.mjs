@@ -265,6 +265,7 @@ try {
   await test("appointment creation and owner notification", async () => {
     const prepared = await client.evaluate(`(() => {
       uiState.selectedServiceId = state.services[0].id;
+      uiState.selectedServiceIds = [state.services[0].id, state.services[1].id];
       uiState.selectedStaffId = state.staff[0].id;
       for (let offset = 1; offset < 21; offset += 1) {
         const date = new Date();
@@ -290,10 +291,22 @@ try {
     await wait(180);
     const created = await client.evaluate(`({
       bookings: state.bookings.length,
+      serviceIds: state.bookings[0]?.service_ids?.length || 0,
+      serviceName: state.bookings[0]?.service_name || '',
+      totalDuration: state.bookings[0]?.duration_minutes || 0,
+      expectedDuration: (state.services[0]?.duration || 0) + (state.services[1]?.duration || 0),
       ownerNotifications: state.notifications.filter((item) => item.user_id === 'owner' && item.type === 'appointment_booked').length,
       success: !bookingSuccessPanel.classList.contains('is-hidden')
     })`);
-    assert(created.bookings === 1 && created.ownerNotifications === 1 && created.success, "Appointment creation or notification failed");
+    assert(
+      created.bookings === 1 &&
+      created.serviceIds === 2 &&
+      created.serviceName.includes(' + ') &&
+      created.totalDuration === created.expectedDuration &&
+      created.ownerNotifications === 1 &&
+      created.success,
+      "Appointment creation or combined-service notification failed"
+    );
   });
 
   await test("customer appointment cancellation and confirmation", async () => {
@@ -347,9 +360,10 @@ try {
       count: state.bookings.length,
       replaces: state.bookings[1]?.replaces_booking_id,
       originalId: state.bookings[0]?.id,
+      serviceIds: state.bookings[1]?.service_ids?.length || 0,
       ownerNotification: state.notifications.some((item) => item.user_id === 'owner' && item.type === 'appointment_rescheduled')
     })`);
-    assert(rescheduled.count === 2 && rescheduled.replaces === rescheduled.originalId && rescheduled.ownerNotification, "Rescheduling request failed");
+    assert(rescheduled.count === 2 && rescheduled.replaces === rescheduled.originalId && rescheduled.serviceIds === 2 && rescheduled.ownerNotification, "Rescheduling request failed");
   });
 
   await test("customer login persists after leaving and returning", async () => {
@@ -439,6 +453,279 @@ try {
       };
     })()`);
     assert(Object.values(forms).every(Boolean), `One or more owner forms failed: ${JSON.stringify(forms)}`);
+  });
+
+  await test("owner dashboard stats and customer history render", async () => {
+    const overview = await client.evaluate(`(() => {
+      rerenderAll();
+      const statTitles = [...ownerStatsGrid.querySelectorAll('.owner-stat-card > span:first-child')].map((item) => item.textContent.trim());
+      const firstCustomerCard = ownerCustomersList.querySelector('.owner-customer-card');
+      return {
+        hasMonthlyAppointments: statTitles.includes('תורים החודש'),
+        hasCancelled: statTitles.includes('ביטולים'),
+        hasNewCustomers: statTitles.includes('לקוחות חדשות'),
+        historyTitle: firstCustomerCard?.querySelector('.customer-history-head strong')?.textContent.trim() || '',
+        historyItems: firstCustomerCard?.querySelectorAll('.customer-history-item').length || 0,
+        noteVisible: firstCustomerCard?.textContent.includes('בדיקה') || false
+      };
+    })()`);
+    assert(
+      overview.hasMonthlyAppointments &&
+      overview.hasCancelled &&
+      overview.hasNewCustomers &&
+      overview.historyTitle === 'היסטוריית לקוחה' &&
+      overview.historyItems > 0 &&
+      overview.noteVisible,
+      `Owner stats or customer history failed: ${JSON.stringify(overview)}`
+    );
+  });
+
+  await test("blocked customer cannot create a new appointment", async () => {
+    const blockResult = await client.evaluate(`(() => {
+      const phone = '0501234567';
+      const blockButton = ownerCustomersList.querySelector('.toggle-customer-block-button[data-customer-phone="' + phone + '"]');
+      if (!blockButton) return { blocked: false, exists: false };
+      blockButton.click();
+      return {
+        exists: true,
+        blocked: Boolean(state.users.find((user) => normalizePhoneNumber(user.phone) === phone)?.is_blocked)
+      };
+    })()`);
+    assert(blockResult.exists && blockResult.blocked, `Could not block customer: ${JSON.stringify(blockResult)}`);
+
+    await client.send("Page.navigate", { url: `http://127.0.0.1:${port}/index.html` });
+    await wait(700);
+    const prevented = await client.evaluate(`(() => {
+      syncSelectedServiceState([state.services[0].id]);
+      uiState.selectedStaffId = state.staff[0].id;
+      for (let offset = 2; offset < 21; offset += 1) {
+        const date = new Date();
+        date.setDate(date.getDate() + offset);
+        const dateValue = localDateValue(date);
+        const slots = getAvailableSlots(dateValue);
+        if (slots.length) {
+          uiState.selectedDate = dateValue;
+          uiState.selectedTime = slots[0];
+          break;
+        }
+      }
+      showWizardStep(4);
+      renderDetailsForm();
+      const before = state.bookings.length;
+      bookingForm.requestSubmit();
+      return {
+        blocked: isCustomerBlocked(),
+        disabled: bookingSubmitButton.disabled,
+        notice: detailsNotice.textContent,
+        unchanged: state.bookings.length === before
+      };
+    })()`);
+    assert(
+      prevented.blocked &&
+      prevented.disabled &&
+      prevented.notice.includes('חסום') &&
+      prevented.unchanged,
+      `Blocked customer was not prevented: ${JSON.stringify(prevented)}`
+    );
+
+    await client.send("Page.navigate", { url: `http://127.0.0.1:${port}/owner.html` });
+    await wait(700);
+    const unblocked = await client.evaluate(`(() => {
+      const phone = '0501234567';
+      const unblockButton = ownerCustomersList.querySelector('.toggle-customer-block-button[data-customer-phone="' + phone + '"]');
+      if (!unblockButton) return false;
+      unblockButton.click();
+      return !state.users.find((user) => normalizePhoneNumber(user.phone) === phone)?.is_blocked;
+    })()`);
+    assert(unblocked, "Customer could not be unblocked after the test");
+  });
+
+  await test("waiting list prompt, join flow and cancellation notification", async () => {
+    const waitlistSetup = await client.evaluate(`(() => {
+      const waitDate = '2030-02-10';
+      const service = state.services[state.services.length - 1];
+      const waitingPhone = '0507654321';
+
+      state.specialHours = normalizeSpecialHours([
+        ...state.specialHours.filter((item) => item.id !== 'audit-waitlist-hours'),
+        {
+          id: 'audit-waitlist-hours',
+          special_date: waitDate,
+          opens_at: '10:00',
+          closes_at: '10:30',
+          slot_interval_minutes: 30,
+          is_closed: false,
+          note: 'בדיקת רשימת המתנה'
+        }
+      ]);
+
+      state.users = normalizeUsers([
+        ...state.users.filter((user) => normalizePhoneNumber(user.phone) !== waitingPhone),
+        {
+          firstName: 'נועה',
+          lastName: 'ממתינה',
+          phone: waitingPhone,
+          password: 'wait123',
+          owner_note: '',
+          is_blocked: false,
+          blocked_reason: '',
+          blocked_at: '',
+          no_show_count: 0,
+          created_at: new Date().toISOString()
+        }
+      ]);
+
+      state.waitlistEntries = normalizeWaitlistEntries(
+        state.waitlistEntries.filter((entry) => entry.id !== 'audit-waitlist-entry')
+      );
+
+      state.bookings = normalizeBookings([
+        ...state.bookings.filter((booking) => booking.id !== 'audit-waitlist-booking'),
+        {
+          id: 'audit-waitlist-booking',
+          service_id: service.id,
+          service_ids: [service.id],
+          service_name: service.name,
+          service_names: [service.name],
+          staff_id: state.staff[0].id,
+          staff_name: state.staff[0].name,
+          customer_first_name: 'אורי',
+          customer_last_name: 'דהאן',
+          customer_phone: '0501234567',
+          notes: '',
+          booking_date: waitDate,
+          booking_time: '10:00',
+          duration_minutes: Number(service.duration || 30),
+          status: 'approved',
+          arrival_status: 'waiting',
+          attendance_confirmation_requested_at: '',
+          attendance_confirmation_status: '',
+          attendance_confirmation_answered_at: ''
+        }
+      ], state.staff, state.services);
+
+      saveState();
+      rerenderAll();
+      return { waitDate, serviceId: service.id };
+    })()`);
+
+    await client.send("Page.navigate", { url: `http://127.0.0.1:${port}/index.html` });
+    await wait(700);
+    await client.evaluate(`(() => {
+      openAuthModal('customer');
+      customerLoginForm.elements.firstName.value = 'נועה';
+      customerLoginForm.elements.lastName.value = 'ממתינה';
+      customerLoginForm.elements.phone.value = '0507654321';
+      customerLoginForm.elements.password.value = 'wait123';
+      customerLoginForm.requestSubmit();
+    })()`);
+    await wait(180);
+    const waitlistUi = await client.evaluate(`(() => {
+      syncSelectedServiceState(['${waitlistSetup.serviceId}']);
+      uiState.selectedStaffId = state.staff[0].id;
+      uiState.selectedDate = '${waitlistSetup.waitDate}';
+      uiState.selectedTime = '';
+      showWizardStep(3);
+      rerenderAll();
+      return {
+        promptVisible: !waitlistPrompt.classList.contains('is-hidden'),
+        joinDisabled: joinWaitlistButton.disabled,
+        noSlots: !timeGroups.textContent.trim()
+      };
+    })()`);
+    assert(waitlistUi.promptVisible && !waitlistUi.joinDisabled && waitlistUi.noSlots, `Waiting list prompt failed: ${JSON.stringify(waitlistUi)}`);
+    const waitlistJoined = await client.evaluate(`(() => {
+      const before = state.waitlistEntries.length;
+      joinWaitlistForCurrentSelection();
+      return {
+        before,
+        after: state.waitlistEntries.length,
+        sessionRole: session.role,
+        sessionPhone: session.customerPhone,
+        selectedIds: getSelectedServiceIds(),
+        selectedDate: uiState.selectedDate,
+        created: state.waitlistEntries.some((entry) => normalizePhoneNumber(entry.customer_phone) === '0507654321' && entry.booking_date === '${waitlistSetup.waitDate}' && entry.status === 'waiting')
+      };
+    })()`);
+    assert(waitlistJoined.created && waitlistJoined.after === waitlistJoined.before + 1, `Customer was not added to the waiting list: ${JSON.stringify(waitlistJoined)}`);
+
+    await client.send("Page.navigate", { url: `http://127.0.0.1:${port}/owner.html` });
+    await wait(700);
+    await client.evaluate(`uiState.ownerBookingsFilter = 'all'; renderSellerBookings(); document.querySelector('.seller-cancel-booking-button[data-booking-id="audit-waitlist-booking"]').click()`);
+    await wait(120);
+    await client.evaluate("document.querySelector('.app-confirm-overlay button:last-child').click()");
+    await wait(160);
+    const waitlistNotified = await client.evaluate(`(() => {
+      const entry = state.waitlistEntries.find((item) => item.id === 'audit-waitlist-entry') || state.waitlistEntries.find((item) => normalizePhoneNumber(item.customer_phone) === '0507654321' && item.booking_date === '${waitlistSetup.waitDate}');
+      return {
+        status: entry?.status || '',
+        notification: state.notifications.some((item) => item.user_id === 'customer:0507654321' && item.title.includes('התפנה מקום'))
+      };
+    })()`);
+    assert(waitlistNotified.status === 'notified' && waitlistNotified.notification, `Waiting list notification failed: ${JSON.stringify(waitlistNotified)}`);
+  });
+
+  await test("attendance confirmation can be sent and answered", async () => {
+    const attendanceSetup = await client.evaluate(`(() => {
+      const targetDate = localDateValue(new Date(Date.now() + 172800000));
+      const service = state.services[0];
+      state.bookings = normalizeBookings([
+        ...state.bookings.filter((booking) => booking.id !== 'audit-attendance-booking'),
+        {
+          id: 'audit-attendance-booking',
+          service_id: service.id,
+          service_ids: [service.id],
+          service_name: service.name,
+          service_names: [service.name],
+          staff_id: state.staff[0].id,
+          staff_name: state.staff[0].name,
+          customer_first_name: 'נועה',
+          customer_last_name: 'ממתינה',
+          customer_phone: '0507654321',
+          notes: 'אישור הגעה',
+          booking_date: targetDate,
+          booking_time: '11:00',
+          duration_minutes: Number(service.duration || 60),
+          status: 'approved',
+          arrival_status: 'waiting',
+          attendance_confirmation_requested_at: '',
+          attendance_confirmation_status: '',
+          attendance_confirmation_answered_at: ''
+        }
+      ], state.staff, state.services);
+      saveState();
+      rerenderAll();
+      return targetDate;
+    })()`);
+    await client.evaluate(`uiState.ownerBookingsFilter = 'approved'; renderSellerBookings(); document.querySelector('.send-attendance-confirmation-button[data-booking-id="audit-attendance-booking"]').click()`);
+    await wait(160);
+    const sent = await client.evaluate(`(() => {
+      const booking = state.bookings.find((item) => item.id === 'audit-attendance-booking');
+      return {
+        requested: booking?.attendance_confirmation_status || '',
+        notification: state.notifications.some((item) => item.user_id === 'customer:0507654321' && item.title.includes('אישור הגעה'))
+      };
+    })()`);
+    assert(sent.requested === 'pending' && sent.notification, `Attendance confirmation was not sent: ${JSON.stringify(sent)}`);
+
+    await client.send("Page.navigate", { url: `http://127.0.0.1:${port}/index.html` });
+    await wait(700);
+    const responded = await client.evaluate(`(() => {
+      renderCustomerBookings();
+      const button = document.querySelector('.confirm-arrival-button[data-booking-id="audit-attendance-booking"]');
+      if (!button) {
+        return { found: false };
+      }
+      button.click();
+      const booking = state.bookings.find((item) => item.id === 'audit-attendance-booking');
+      return {
+        found: true,
+        status: booking?.attendance_confirmation_status || '',
+        answered: Boolean(booking?.attendance_confirmation_answered_at),
+        bookingDate: booking?.booking_date || ''
+      };
+    })()`);
+    assert(responded.found && responded.status === 'confirmed' && responded.answered && responded.bookingDate === attendanceSetup, `Attendance response failed: ${JSON.stringify(responded)}`);
   });
 
   await test("optional feature switches hide bonus features", async () => {
@@ -534,7 +821,7 @@ try {
     assert(notificationResult.ownerItemsBefore > 0 && notificationResult.allRead && notificationResult.deleted, "Notification actions failed");
     await client.evaluate("location.reload()");
     await wait(650);
-    assert(await client.evaluate("state.notifications.length > 0 && state.bookings.length === 2"), "Notifications or appointments did not persist after refresh");
+    assert(await client.evaluate("state.notifications.length > 0 && state.bookings.length >= 2"), "Notifications or appointments did not persist after refresh");
   });
 
   await test("mobile, tablet and desktop layout", async () => {

@@ -67,6 +67,7 @@ const state = loadState();
 const uiState = {
   wizardStep: 1,
   selectedServiceId: null,
+  selectedServiceIds: [],
   selectedStaffId: DEFAULT_OWNER_STAFF.id,
   selectedDate: "",
   selectedTime: "",
@@ -74,6 +75,7 @@ const uiState = {
   customerBookingsView: "active",
   sellerCalendarDate: todayDate(),
   sellerCalendarMonthKey: monthKey(new Date()),
+  isBookingSubmitting: false,
   replacementBookingId: null,
   rejectUndoBookingId: null,
   rejectUndoPreviousStatus: null,
@@ -688,10 +690,12 @@ function notifyCustomerWaitlistOpened(waitlistEntry, cancelledBooking) {
     return;
   }
 
+  const timeText = cancelledBooking.booking_time ? ` בשעה ${cancelledBooking.booking_time}` : "";
+
   pushAppNotification(
     getCustomerNotificationUserId(waitlistEntry.customer_phone),
     "התפנה מקום ברשימת ההמתנה",
-    `התפנה מקום ל${waitlistEntry.service_name} בתאריך ${formatDisplayDate(cancelledBooking.booking_date)} בשעה ${cancelledBooking.booking_time}.`,
+    `התפנה מקום ל${waitlistEntry.service_name} בתאריך ${formatDisplayDate(cancelledBooking.booking_date)}${timeText}.`,
     "appointment_updated"
   );
 }
@@ -703,6 +707,13 @@ function notifyCustomerAttendanceConfirmation(booking) {
     `מחר יש לך תור ל${booking.service_name} ב${getBookingDateTimeText(booking)}. נשמח לדעת אם את מגיעה.`,
     "appointment_updated"
   );
+}
+
+function buildCustomerFullName(firstName, lastName) {
+  return [String(firstName || "").trim(), String(lastName || "").trim()]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
 }
 
 function normalizeSocialUrl(value) {
@@ -1030,7 +1041,77 @@ function isRejectUndoActiveForBooking(bookingId) {
 }
 
 function getSelectedService() {
-  return state.services.find((service) => service.id === uiState.selectedServiceId) || null;
+  return getSelectedServices()[0] || null;
+}
+
+function getSelectedServiceIds() {
+  const selectedIds = Array.isArray(uiState.selectedServiceIds) ? uiState.selectedServiceIds : [];
+  const normalizedIds = selectedIds
+    .map((serviceId) => String(serviceId || "").trim())
+    .filter((serviceId, index, array) => serviceId && array.indexOf(serviceId) === index);
+
+  if (normalizedIds.length) {
+    return normalizedIds;
+  }
+
+  return uiState.selectedServiceId ? [String(uiState.selectedServiceId).trim()] : [];
+}
+
+function syncSelectedServiceState(nextIds = getSelectedServiceIds()) {
+  uiState.selectedServiceIds = [...nextIds];
+  uiState.selectedServiceId = nextIds[0] || null;
+}
+
+function getSelectedServices() {
+  const selectedIds = getSelectedServiceIds();
+  return selectedIds
+    .map((serviceId) => state.services.find((service) => service.id === serviceId) || null)
+    .filter(Boolean);
+}
+
+function buildServiceBundle(services) {
+  if (!services.length) {
+    return null;
+  }
+
+  const names = services.map((service) => service.name);
+  const ids = services.map((service) => service.id);
+
+  return {
+    ids,
+    names,
+    name: names.join(" + "),
+    price: services.reduce((sum, service) => sum + Number(service.price || 0), 0),
+    duration: services.reduce((sum, service) => sum + Number(service.duration || 0), 0),
+    primaryServiceId: ids[0],
+    primaryServiceName: names[0]
+  };
+}
+
+function getSelectedServiceBundle() {
+  return buildServiceBundle(getSelectedServices());
+}
+
+function resolveServiceBundle(selection = null) {
+  if (!selection) {
+    return getSelectedServiceBundle();
+  }
+
+  if (typeof selection === "string") {
+    const service = state.services.find((item) => item.id === selection);
+    return service ? buildServiceBundle([service]) : null;
+  }
+
+  if (Array.isArray(selection)) {
+    const services = selection
+      .map((serviceId) => state.services.find((item) => item.id === serviceId) || null)
+      .filter(Boolean);
+    return buildServiceBundle(services);
+  }
+
+  return buildServiceBundle(
+    Array.isArray(selection.services) ? selection.services.filter(Boolean) : []
+  );
 }
 
 function getSelectedStaff() {
@@ -1062,15 +1143,15 @@ function isCustomerBlocked(phone = session.customerPhone) {
 }
 
 function getSelectedWaitlistEntry() {
-  const service = getSelectedService();
-  if (!service || !uiState.selectedDate) {
+  const selectedIds = getSelectedServiceIds();
+  if (selectedIds.length !== 1 || !uiState.selectedDate) {
     return null;
   }
 
   return state.waitlistEntries.find((entry) =>
     entry.status === "waiting" &&
     entry.booking_date === uiState.selectedDate &&
-    entry.service_id === service.id &&
+    entry.service_id === selectedIds[0] &&
     isSamePhone(entry.customer_phone, session.customerPhone)
   ) || null;
 }
@@ -1194,10 +1275,11 @@ function hideBookingSuccess() {
 function showBookingSuccess(booking) {
   const isChangeRequest = Boolean(booking.replaces_booking_id);
   bookingSuccessSummary.innerHTML = `
-    <div class="summary-row"><span>שירות</span><strong>${booking.service_name}</strong></div>
+    <div class="summary-row"><span>${booking.service_ids?.length > 1 ? "שירותים" : "שירות"}</span><strong>${booking.service_name}</strong></div>
     <div class="summary-row"><span>אשת צוות</span><strong>${booking.staff_name}</strong></div>
     <div class="summary-row"><span>תאריך</span><strong>${formatDisplayDate(booking.booking_date)}</strong></div>
     <div class="summary-row"><span>שעה</span><strong>${booking.booking_time}</strong></div>
+    <div class="summary-row"><span>משך כולל</span><strong>${booking.duration_minutes} דקות</strong></div>
   `;
   bookingSuccessTitle.textContent = isChangeRequest ? "בקשת שינוי התור נשלחה" : "ההזמנה נשלחה בהצלחה";
   bookingSuccessText.textContent = isChangeRequest
@@ -1317,13 +1399,14 @@ function groupedServices() {
 }
 
 function renderServices() {
+  const selectedIds = getSelectedServiceIds();
   servicesCategories.innerHTML = Object.entries(groupedServices())
     .map(([category, services]) => `
       <section class="category-block">
         <h3 class="category-title">${category}</h3>
         <div class="services-grid">
           ${services.map((service) => `
-            <button class="service-card ${service.id === uiState.selectedServiceId ? "is-selected" : ""}" type="button" data-service-id="${service.id}">
+            <button class="service-card ${selectedIds.includes(service.id) ? "is-selected" : ""}" type="button" data-service-id="${service.id}">
               <div class="service-card-head">
                 <strong>${service.name}</strong>
                 <span class="service-card-check" aria-hidden="true"></span>
@@ -1352,31 +1435,34 @@ function renderStaff() {
 }
 
 function renderSelectedSummary() {
-  const service = getSelectedService();
+  const serviceBundle = getSelectedServiceBundle();
   const staff = getSelectedStaff();
 
-  if (!service) {
+  if (!serviceBundle) {
     selectedSummary.innerHTML = "";
     return;
   }
 
   selectedSummary.innerHTML = `
-    <div class="selected-summary-row"><span>שירות</span><strong>${service.name}</strong></div>
-    <div class="selected-summary-row"><span>מחיר</span><strong>${formatPrice(service.price)}</strong></div>
-    <div class="selected-summary-row"><span>משך</span><strong>${service.duration} דקות</strong></div>
+    <div class="selected-summary-row"><span>${serviceBundle.ids.length > 1 ? "שירותים" : "שירות"}</span><strong>${serviceBundle.name}</strong></div>
+    <div class="selected-summary-row"><span>כמה שירותים</span><strong>${serviceBundle.ids.length}</strong></div>
+    <div class="selected-summary-row"><span>מחיר כולל</span><strong>${formatPrice(serviceBundle.price)}</strong></div>
+    <div class="selected-summary-row"><span>משך כולל</span><strong>${serviceBundle.duration} דקות</strong></div>
     <div class="selected-summary-row"><span>צוות</span><strong>${staff.name}</strong></div>
     ${uiState.replacementBookingId ? '<div class="selected-summary-row"><span>מצב</span><strong>שינוי תור קיים</strong></div>' : ""}
   `;
 }
 
 function renderBookingSummary() {
-  const service = getSelectedService();
+  const serviceBundle = getSelectedServiceBundle();
   const staff = getSelectedStaff();
   const dateText = uiState.selectedDate ? formatDisplayDate(uiState.selectedDate) : "-";
   const timeText = uiState.selectedTime || "-";
 
   bookingSummaryCard.innerHTML = `
-    <div class="summary-row"><span>שירות</span><strong>${service ? service.name : "-"}</strong></div>
+    <div class="summary-row"><span>${serviceBundle?.ids.length > 1 ? "שירותים" : "שירות"}</span><strong>${serviceBundle ? serviceBundle.name : "-"}</strong></div>
+    <div class="summary-row"><span>משך כולל</span><strong>${serviceBundle ? `${serviceBundle.duration} דקות` : "-"}</strong></div>
+    <div class="summary-row"><span>מחיר כולל</span><strong>${serviceBundle ? formatPrice(serviceBundle.price) : "-"}</strong></div>
     <div class="summary-row"><span>אשת צוות</span><strong>${staff ? staff.name : "-"}</strong></div>
     <div class="summary-row"><span>תאריך</span><strong>${dateText}</strong></div>
     <div class="summary-row"><span>שעה</span><strong>${timeText}</strong></div>
@@ -1446,11 +1532,11 @@ function getAssignableStaffIds(dateValue, startMinutes, durationMinutes) {
     .map((staff) => staff.id);
 }
 
-function getAvailableSlots(dateValue, serviceId = uiState.selectedServiceId, staffId = uiState.selectedStaffId) {
-  const service = state.services.find((item) => item.id === serviceId);
+function getAvailableSlots(dateValue, serviceSelection = getSelectedServiceIds(), staffId = uiState.selectedStaffId) {
+  const serviceBundle = resolveServiceBundle(serviceSelection);
   const workDay = findWorkingHoursForDate(dateValue);
 
-  if (!service || !workDay || workDay.is_closed || !workDay.opens_at || !workDay.closes_at || isPastDate(dateValue)) {
+  if (!serviceBundle || !workDay || workDay.is_closed || !workDay.opens_at || !workDay.closes_at || isPastDate(dateValue)) {
     return [];
   }
 
@@ -1459,7 +1545,7 @@ function getAvailableSlots(dateValue, serviceId = uiState.selectedServiceId, sta
   const interval = Number(workDay.slot_interval_minutes || 30);
   const slots = [];
 
-  for (let start = openMinutes; start + Number(service.duration) <= closeMinutes; start += interval) {
+  for (let start = openMinutes; start + Number(serviceBundle.duration) <= closeMinutes; start += interval) {
     const slotTime = formatMinutesToTime(start);
 
     if (dateValue === todayDate() && isPastTime(dateValue, slotTime)) {
@@ -1470,7 +1556,7 @@ function getAvailableSlots(dateValue, serviceId = uiState.selectedServiceId, sta
       continue;
     }
 
-    const assignableStaffIds = getAssignableStaffIds(dateValue, start, Number(service.duration));
+    const assignableStaffIds = getAssignableStaffIds(dateValue, start, Number(serviceBundle.duration));
     if (assignableStaffIds.includes(staffId)) {
       slots.push(slotTime);
     }
@@ -1504,7 +1590,7 @@ function maybePromoteWaitlistForBooking(booking) {
 }
 
 function joinWaitlistForCurrentSelection() {
-  const service = getSelectedService();
+  const serviceBundle = getSelectedServiceBundle();
   const currentCustomer = getCurrentCustomer();
 
   if (session.role !== "customer") {
@@ -1512,7 +1598,7 @@ function joinWaitlistForCurrentSelection() {
     return;
   }
 
-  if (!isBusinessFeatureEnabled("waitingList") || !service || !uiState.selectedDate) {
+  if (!isBusinessFeatureEnabled("waitingList") || !serviceBundle || !uiState.selectedDate || serviceBundle.ids.length !== 1) {
     return;
   }
 
@@ -1528,10 +1614,10 @@ function joinWaitlistForCurrentSelection() {
 
   state.waitlistEntries.push({
     id: `waitlist-${Date.now()}`,
-    customer_phone: currentCustomer?.phone || session.customerPhone || "",
-    customer_name: buildCustomerFullName(currentCustomer?.firstName, currentCustomer?.lastName) || "לקוחה",
-    service_id: service.id,
-    service_name: service.name,
+      customer_phone: currentCustomer?.phone || session.customerPhone || "",
+      customer_name: buildCustomerFullName(currentCustomer?.firstName, currentCustomer?.lastName) || "לקוחה",
+      service_id: serviceBundle.primaryServiceId,
+      service_name: serviceBundle.primaryServiceName,
     booking_date: uiState.selectedDate,
     notes: uiState.bookingDraft.notes || "",
     status: "waiting",
@@ -1594,22 +1680,22 @@ function runAttendanceConfirmationSweep() {
 }
 
 function renderTodayAvailability() {
-  const service = getSelectedService();
+  const serviceBundle = getSelectedServiceBundle();
 
-  if (!service) {
+  if (!serviceBundle) {
     todayAvailabilityText.textContent = "בחרי שירות כדי לראות שעות פנויות להיום.";
     todaySlotsList.innerHTML = "";
     return;
   }
 
-  const slots = getAvailableSlots(todayDate(), service.id, uiState.selectedStaffId).slice(0, 6);
+  const slots = getAvailableSlots(todayDate(), serviceBundle.ids, uiState.selectedStaffId).slice(0, 6);
   if (!slots.length) {
-    todayAvailabilityText.textContent = `אין שעות פנויות היום עבור ${service.name}.`;
+    todayAvailabilityText.textContent = `אין שעות פנויות היום עבור ${serviceBundle.name}.`;
     todaySlotsList.innerHTML = "";
     return;
   }
 
-  todayAvailabilityText.textContent = `השעות הקרובות הפנויות היום עבור ${service.name}:`;
+  todayAvailabilityText.textContent = `השעות הקרובות הפנויות היום עבור ${serviceBundle.name}:`;
   todaySlotsList.innerHTML = slots
     .map((time) => `<button class="today-slot-chip" type="button" data-today-time="${time}">${time}</button>`)
     .join("");
@@ -1710,6 +1796,7 @@ function groupTimes(times) {
 
 function renderTimeOptions() {
   const availableTimes = uiState.selectedDate ? getAvailableSlots(uiState.selectedDate) : [];
+  const selectedIds = getSelectedServiceIds();
   const grouped = groupTimes(availableTimes);
   const canOfferWaitlist = Boolean(
     waitlistPrompt &&
@@ -1717,7 +1804,8 @@ function renderTimeOptions() {
     uiState.selectedDate &&
     !availableTimes.length &&
     isBusinessFeatureEnabled("waitingList") &&
-    getSelectedService()
+    selectedIds.length === 1 &&
+    getSelectedServiceBundle()
   );
 
   if (!availableTimes.includes(uiState.selectedTime)) {
@@ -1787,8 +1875,11 @@ function renderDetailsForm() {
     detailsNotice.textContent = "כדי לאשר תור צריך להתחבר כלקוחה. בלי התחברות אי אפשר לשמור הזמנה.";
   }
 
-  bookingSubmitButton.textContent = sourceBooking ? "שליחת שינוי תור" : "קבע תור";
-  bookingSubmitButton.disabled = blockedCustomer;
+  bookingSubmitButton.textContent = uiState.isBookingSubmitting
+    ? "שומר..."
+    : sourceBooking
+      ? "שליחת שינוי תור"
+      : "קבע תור";
 
   Array.from(bookingForm.elements).forEach((element) => {
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLButtonElement) {
@@ -1796,6 +1887,8 @@ function renderDetailsForm() {
       element.readOnly = false;
     }
   });
+
+  bookingSubmitButton.disabled = blockedCustomer || uiState.isBookingSubmitting;
 }
 
 function renderCustomerBookings() {
@@ -2134,6 +2227,7 @@ function updateSessionUi() {
 }
 
 function rerenderAll() {
+  syncSelectedServiceState(getSelectedServiceIds().filter((serviceId) => state.services.some((service) => service.id === serviceId)));
   runAttendanceConfirmationSweep();
   renderBusiness();
   renderWizardSteps();
@@ -2168,10 +2262,10 @@ function goToStep(stepNumber) {
 }
 
 function ensureServiceSelected() {
-  if (getSelectedService()) {
+  if (getSelectedServiceBundle()) {
     return true;
   }
-  appUi.toast("צריך לבחור שירות לפני שממשיכים.", { variant: "error" });
+  appUi.toast("צריך לבחור לפחות שירות אחד לפני שממשיכים.", { variant: "error" });
   goToStep(1);
   return false;
 }
@@ -2276,7 +2370,7 @@ function resolveAssignedStaff(dateValue, timeValue, service) {
 }
 
 function resetBookingSelection() {
-  uiState.selectedServiceId = null;
+  syncSelectedServiceState([]);
   uiState.selectedStaffId = DEFAULT_OWNER_STAFF.id;
   uiState.selectedDate = "";
   uiState.selectedTime = "";
@@ -2363,7 +2457,13 @@ servicesCategories.addEventListener("click", (event) => {
     return;
   }
 
-  uiState.selectedServiceId = card.dataset.serviceId;
+  const selectedIds = getSelectedServiceIds();
+  const serviceId = card.dataset.serviceId;
+  const nextIds = selectedIds.includes(serviceId)
+    ? selectedIds.filter((item) => item !== serviceId)
+    : [...selectedIds, serviceId];
+
+  syncSelectedServiceState(nextIds);
   uiState.selectedDate = "";
   uiState.selectedTime = "";
   uiState.selectedMonthKey = monthKey(new Date());
@@ -2419,6 +2519,10 @@ timeGroups.addEventListener("click", (event) => {
   uiState.selectedTime = button.dataset.timeValue;
   hideBookingSuccess();
   rerenderAll();
+});
+
+joinWaitlistButton?.addEventListener("click", () => {
+  joinWaitlistForCurrentSelection();
 });
 
 calendarPrevButton.addEventListener("click", () => {
@@ -2550,6 +2654,10 @@ sellerLoginForm.addEventListener("submit", (event) => {
 bookingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
+  if (uiState.isBookingSubmitting) {
+    return;
+  }
+
   if (session.role !== "customer") {
     openAuthModal("customer");
     return;
@@ -2559,7 +2667,7 @@ bookingForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  const service = getSelectedService();
+  const serviceBundle = getSelectedServiceBundle();
   const fullName = String(bookingForm.elements.fullName.value).trim();
   const phone = String(bookingForm.elements.phone.value).trim();
   const notes = String(bookingForm.elements.notes.value).trim();
@@ -2574,59 +2682,67 @@ bookingForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  const assignedStaff = resolveAssignedStaff(uiState.selectedDate, uiState.selectedTime, service);
-  if (!assignedStaff) {
-    appUi.toast("השעה שנבחרה כבר לא זמינה. בחרי שעה אחרת.", { variant: "warning" });
-    uiState.selectedTime = "";
-    rerenderAll();
-    goToStep(3);
-    return;
-  }
-
-  updateCurrentCustomer(fullName, phone);
-
-  const nameParts = parseFullName(fullName);
-  const replacedBookingId = uiState.replacementBookingId;
-  const sourceBooking = replacedBookingId ? findBookingById(replacedBookingId) : null;
-  const newBooking = {
-    id: `booking-${Date.now()}`,
-    service_id: service.id,
-    service_ids: [service.id],
-    service_name: service.name,
-    service_names: [service.name],
-    staff_id: assignedStaff.id,
-    staff_name: assignedStaff.name,
-    customer_first_name: nameParts.firstName,
-    customer_last_name: nameParts.lastName,
-    customer_phone: phone,
-    notes,
-    booking_date: uiState.selectedDate,
-    booking_time: uiState.selectedTime,
-    duration_minutes: service.duration,
-    status: "pending",
-    replaces_booking_id: replacedBookingId || null,
-    attendance_confirmation_requested_at: "",
-    attendance_confirmation_status: "",
-    attendance_confirmation_answered_at: ""
-  };
-
-  state.bookings.push(newBooking);
-  if (sourceBooking) {
-    notifyOwnerAppointmentRescheduled(newBooking, sourceBooking);
-  } else {
-    notifyOwnerAppointmentBooked(newBooking);
-  }
-  uiState.bookingDraft = {
-    fullName: "",
-    phone: "",
-    notes: ""
-  };
-  clearReplacementBooking();
-  saveState();
+  uiState.isBookingSubmitting = true;
   rerenderAll();
-  showWizardStep(4);
-  showBookingSuccess(newBooking);
-  window.scrollTo({ top: 0, behavior: "smooth" });
+
+  try {
+    const assignedStaff = resolveAssignedStaff(uiState.selectedDate, uiState.selectedTime, serviceBundle);
+    if (!assignedStaff) {
+      appUi.toast("השעה שנבחרה כבר לא זמינה. בחרי שעה אחרת.", { variant: "warning" });
+      uiState.selectedTime = "";
+      rerenderAll();
+      goToStep(3);
+      return;
+    }
+
+    updateCurrentCustomer(fullName, phone);
+
+    const nameParts = parseFullName(fullName);
+    const replacedBookingId = uiState.replacementBookingId;
+    const sourceBooking = replacedBookingId ? findBookingById(replacedBookingId) : null;
+    const newBooking = {
+      id: `booking-${Date.now()}`,
+      service_id: serviceBundle.primaryServiceId,
+      service_ids: serviceBundle.ids,
+      service_name: serviceBundle.name,
+      service_names: serviceBundle.names,
+      staff_id: assignedStaff.id,
+      staff_name: assignedStaff.name,
+      customer_first_name: nameParts.firstName,
+      customer_last_name: nameParts.lastName,
+      customer_phone: phone,
+      notes,
+      booking_date: uiState.selectedDate,
+      booking_time: uiState.selectedTime,
+      duration_minutes: serviceBundle.duration,
+      status: "pending",
+      replaces_booking_id: replacedBookingId || null,
+      attendance_confirmation_requested_at: "",
+      attendance_confirmation_status: "",
+      attendance_confirmation_answered_at: ""
+    };
+
+    state.bookings.push(newBooking);
+    if (sourceBooking) {
+      notifyOwnerAppointmentRescheduled(newBooking, sourceBooking);
+    } else {
+      notifyOwnerAppointmentBooked(newBooking);
+    }
+    uiState.bookingDraft = {
+      fullName: "",
+      phone: "",
+      notes: ""
+    };
+    clearReplacementBooking();
+    saveState();
+    rerenderAll();
+    showWizardStep(4);
+    showBookingSuccess(newBooking);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } finally {
+    uiState.isBookingSubmitting = false;
+    rerenderAll();
+  }
 });
 
 businessForm.addEventListener("submit", (event) => {
@@ -2689,8 +2805,8 @@ servicesEditor.addEventListener("click", (event) => {
   const serviceId = row.dataset.serviceId;
   state.services = state.services.filter((service) => service.id !== serviceId);
 
-  if (uiState.selectedServiceId === serviceId) {
-    uiState.selectedServiceId = null;
+  if (getSelectedServiceIds().includes(serviceId)) {
+    syncSelectedServiceState(getSelectedServiceIds().filter((selectedId) => selectedId !== serviceId));
     uiState.selectedDate = "";
     uiState.selectedTime = "";
   }
@@ -2955,7 +3071,7 @@ myBookingsList.addEventListener("click", async (event) => {
       return;
     }
 
-    uiState.selectedServiceId = booking.service_id;
+    syncSelectedServiceState(booking.service_ids?.length ? booking.service_ids : [booking.service_id]);
     uiState.selectedStaffId = booking.staff_id;
     uiState.selectedDate = "";
     uiState.selectedTime = "";
