@@ -3,6 +3,16 @@ const SELLER_SESSION_KEY = "booking_app_seller_session_v1";
 const CUSTOMER_SESSION_KEY = "booking_app_customer_session_v1";
 const REJECT_UNDO_WINDOW_MS = 5000;
 const ARRIVAL_STATUS_OPTIONS = ["waiting", "arrived", "finished", "no_show"];
+const BUSINESS_FEATURE_FIELDS = {
+  businessDescription: "featureBusinessDescription",
+  preparationMessage: "featurePreparationMessage",
+  socialLink: "featureSocialLink",
+  whatsapp: "featureWhatsapp",
+  phone: "featurePhone",
+  waze: "featureWaze",
+  calendarExport: "featureCalendarExport",
+  customerRescheduling: "featureCustomerRescheduling"
+};
 
 const DEFAULT_OWNER_STAFF = {
   id: "staff-owner",
@@ -21,7 +31,17 @@ const DEFAULT_DATA = {
     instagram_url: "",
     cover_image: "",
     profile_image: "",
-    preparation_message: "נא להגיע בזמן. אם צריך לבטל או לשנות תור, עדכני מראש."
+    preparation_message: "נא להגיע בזמן. אם צריך לבטל או לשנות תור, עדכני מראש.",
+    features: {
+      businessDescription: true,
+      preparationMessage: true,
+      socialLink: true,
+      whatsapp: true,
+      phone: true,
+      waze: true,
+      calendarExport: true,
+      customerRescheduling: true
+    }
   },
   sellerCredentials: {
     username: "admin",
@@ -180,10 +200,14 @@ function rememberSellerSession() {
   localStorage.setItem(SELLER_SESSION_KEY, "1");
 }
 
-function clearRememberedSessions() {
+function clearRememberedSellerSession() {
   localStorage.removeItem(SELLER_SESSION_KEY);
-  localStorage.removeItem(CUSTOMER_SESSION_KEY);
   sessionStorage.removeItem(SELLER_SESSION_KEY);
+}
+
+function clearRememberedSessions() {
+  clearRememberedSellerSession();
+  localStorage.removeItem(CUSTOMER_SESSION_KEY);
 }
 
 function isSellerRemembered() {
@@ -236,10 +260,14 @@ function normalizeBusiness(business) {
     normalized.phone = DEFAULT_DATA.business.phone;
   }
 
-  normalized.instagram_url = normalizeInstagramUrl(normalized.instagram_url);
+  normalized.instagram_url = normalizeSocialUrl(normalized.instagram_url);
   normalized.cover_image = String(normalized.cover_image || "").trim();
   normalized.profile_image = String(normalized.profile_image || "").trim();
   normalized.preparation_message = String(normalized.preparation_message || DEFAULT_DATA.business.preparation_message).trim();
+  normalized.features = {
+    ...DEFAULT_DATA.business.features,
+    ...(business?.features || {})
+  };
   return normalized;
 }
 
@@ -396,7 +424,7 @@ function normalizeSpecialHours(specialHours) {
     .sort((left, right) => left.special_date.localeCompare(right.special_date));
 }
 
-function normalizeInstagramUrl(value) {
+function normalizeSocialUrl(value) {
   const trimmed = String(value || "").trim();
   if (!trimmed || trimmed === "https://instagram.com") {
     return "";
@@ -1600,8 +1628,12 @@ function renderEditors() {
   businessForm.elements.description.value = state.business.description;
   businessForm.elements.address.value = state.business.address;
   businessForm.elements.phone.value = state.business.phone;
-  businessForm.elements.instagramUrl.value = normalizeInstagramUrl(state.business.instagram_url);
+  businessForm.elements.instagramUrl.value = normalizeSocialUrl(state.business.instagram_url);
   businessForm.elements.preparationMessage.value = state.business.preparation_message || "";
+  Object.entries(BUSINESS_FEATURE_FIELDS).forEach(([featureName, fieldName]) => {
+    businessForm.elements[fieldName].checked = state.business.features[featureName] !== false;
+  });
+  renderBusinessFeatureEditorState();
   businessForm.elements.coverImageFile.value = "";
   businessForm.elements.profileImageFile.value = "";
   renderBusinessImagePreviews();
@@ -1644,6 +1676,44 @@ function renderEditors() {
       `)
       .join("")}
   `;
+}
+
+function getBusinessFeaturesFromForm() {
+  return Object.fromEntries(
+    Object.entries(BUSINESS_FEATURE_FIELDS).map(([featureName, fieldName]) => [
+      featureName,
+      Boolean(businessForm.elements[fieldName].checked)
+    ])
+  );
+}
+
+function renderBusinessFeatureEditorState() {
+  const descriptionEnabled = businessForm.elements.featureBusinessDescription.checked;
+  const socialEnabled = businessForm.elements.featureSocialLink.checked;
+  const prepEnabled = businessForm.elements.featurePreparationMessage.checked;
+
+  businessForm.querySelector('[data-feature-editor="businessDescription"]')?.classList.toggle(
+    "is-feature-disabled",
+    !descriptionEnabled
+  );
+  businessForm.querySelector('[data-feature-editor="socialLink"]')?.classList.toggle(
+    "is-feature-disabled",
+    !socialEnabled
+  );
+  businessForm.querySelector('[data-feature-editor="preparationMessage"]')?.classList.toggle(
+    "is-feature-disabled",
+    !prepEnabled
+  );
+
+  if (businessForm.elements.description) {
+    businessForm.elements.description.disabled = !descriptionEnabled;
+  }
+  if (businessForm.elements.instagramUrl) {
+    businessForm.elements.instagramUrl.disabled = !socialEnabled;
+  }
+  if (businessForm.elements.preparationMessage) {
+    businessForm.elements.preparationMessage.disabled = !prepEnabled;
+  }
 }
 
 function setSpecialHoursClosedState() {
@@ -1824,7 +1894,7 @@ ownerLoginForm.addEventListener("submit", (event) => {
 ownerLogoutButton.addEventListener("click", () => {
   clearRejectUndo(false);
   closeCalendarChoice();
-  clearRememberedSessions();
+  clearRememberedSellerSession();
   window.location.href = "index.html";
 });
 
@@ -2256,6 +2326,11 @@ businessForm.addEventListener("click", (event) => {
 
 businessForm.addEventListener("change", async (event) => {
   const target = event.target;
+  if (target instanceof HTMLInputElement && target.name.startsWith("feature")) {
+    renderBusinessFeatureEditorState();
+    return;
+  }
+
   if (!(target instanceof HTMLInputElement) || target.type !== "file") {
     return;
   }
@@ -2307,8 +2382,9 @@ businessForm.addEventListener("submit", async (event) => {
     description: String(businessForm.elements.description.value).trim(),
     address: String(businessForm.elements.address.value).trim(),
     phone: String(businessForm.elements.phone.value).trim(),
-    instagram_url: normalizeInstagramUrl(businessForm.elements.instagramUrl.value),
+    instagram_url: normalizeSocialUrl(businessForm.elements.instagramUrl.value),
     preparation_message: String(businessForm.elements.preparationMessage.value).trim(),
+    features: getBusinessFeaturesFromForm(),
     cover_image: coverImage,
     profile_image: profileImage
   };

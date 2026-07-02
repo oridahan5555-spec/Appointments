@@ -20,7 +20,19 @@ const DEFAULT_DATA = {
     instagram_url: "",
     cover_image: "",
     profile_image: "",
-    preparation_message: "נא להגיע בזמן. אם צריך לבטל או לשנות תור, עדכני מראש."
+    preparation_message: "נא להגיע בזמן. אם צריך לבטל או לשנות תור, עדכני מראש.",
+    features: {
+      businessDescription: true,
+      preparationMessage: true,
+      socialLink: true,
+      whatsapp: true,
+      phone: true,
+      waze: true,
+      calendarExport: true,
+      customerRescheduling: true,
+      waitingList: true,
+      attendanceConfirmation: true
+    }
   },
   sellerCredentials: {
     username: "admin",
@@ -43,6 +55,7 @@ const DEFAULT_DATA = {
   ],
   specialHours: [],
   blockedSlots: [],
+  waitlistEntries: [],
   bookings: [],
   notifications: [],
   users: [],
@@ -65,7 +78,12 @@ const uiState = {
   rejectUndoBookingId: null,
   rejectUndoPreviousStatus: null,
   rejectUndoTimeoutId: null,
-  calendarChoiceBookingId: null
+  calendarChoiceBookingId: null,
+  bookingDraft: {
+    fullName: "",
+    phone: "",
+    notes: ""
+  }
 };
 
 const session = {
@@ -82,8 +100,9 @@ const businessAddress = document.getElementById("businessAddress");
 const businessPhoneText = document.getElementById("businessPhoneText");
 const whatsAppLink = document.getElementById("whatsAppLink");
 const phoneLink = document.getElementById("phoneLink");
-const instagramLink = document.getElementById("instagramLink");
+const socialLink = document.getElementById("socialLink");
 const wazeLink = document.getElementById("wazeLink");
+const contactRow = document.querySelector(".contact-row");
 
 const wizardSteps = document.querySelectorAll("[data-step-indicator]");
 const servicesStep = document.getElementById("servicesStep");
@@ -99,6 +118,8 @@ const calendarPrevButton = document.getElementById("calendarPrevButton");
 const calendarNextButton = document.getElementById("calendarNextButton");
 const timeGroups = document.getElementById("timeGroups");
 const emptyTimesState = document.getElementById("emptyTimesState");
+const waitlistPrompt = document.getElementById("waitlistPrompt");
+const joinWaitlistButton = document.getElementById("joinWaitlistButton");
 const todayAvailabilityText = document.getElementById("todayAvailabilityText");
 const todaySlotsList = document.getElementById("todaySlotsList");
 const bookingSummaryCard = document.getElementById("bookingSummaryCard");
@@ -106,6 +127,7 @@ const detailsNotice = document.getElementById("detailsNotice");
 const bookingSuccessPanel = document.getElementById("bookingSuccessPanel");
 const bookingSuccessTitle = document.getElementById("bookingSuccessTitle");
 const bookingSuccessText = document.getElementById("bookingSuccessText");
+const bookingPreparationMessage = document.getElementById("bookingPreparationMessage");
 const bookingSuccessSummary = document.getElementById("bookingSuccessSummary");
 const bookingSuccessCalendarButton = document.getElementById("bookingSuccessCalendarButton");
 const bookingSubmitButton = document.getElementById("bookingSubmitButton");
@@ -128,6 +150,8 @@ const sellerBookingsList = document.getElementById("sellerBookingsList");
 const openCustomerLogin = document.getElementById("openCustomerLogin");
 const openSellerLogin = document.getElementById("openSellerLogin");
 const logoutButton = document.getElementById("logoutButton");
+const returnToOwnerButton = document.getElementById("returnToOwnerButton");
+const sellerSiteLogoutButton = document.getElementById("sellerSiteLogoutButton");
 const authModal = document.getElementById("authModal");
 const closeModal = document.getElementById("closeModal");
 const modalTabs = document.querySelectorAll(".modal-tab");
@@ -190,6 +214,7 @@ function loadState() {
       workingHours: Array.isArray(parsed.workingHours) && parsed.workingHours.length ? parsed.workingHours : defaults.workingHours,
       specialHours: normalizeSpecialHours(parsed.specialHours),
       blockedSlots: normalizeBlockedSlots(parsed.blockedSlots),
+      waitlistEntries: normalizeWaitlistEntries(parsed.waitlistEntries),
       bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
       notifications: normalizeNotifications(parsed.notifications),
       users: normalizeUsers(parsed.users),
@@ -215,6 +240,7 @@ function saveState() {
       workingHours: state.workingHours,
       specialHours: state.specialHours,
       blockedSlots: state.blockedSlots,
+      waitlistEntries: state.waitlistEntries,
       bookings: state.bookings,
       notifications: state.notifications,
       users: state.users,
@@ -238,6 +264,11 @@ function clearRememberedCustomerSession() {
 
 function rememberSellerSession() {
   localStorage.setItem(SELLER_SESSION_KEY, "1");
+}
+
+function clearRememberedSellerSession() {
+  localStorage.removeItem(SELLER_SESSION_KEY);
+  sessionStorage.removeItem(SELLER_SESSION_KEY);
 }
 
 function isSellerRemembered() {
@@ -290,10 +321,14 @@ function normalizeBusiness(business) {
     normalized.phone = DEFAULT_DATA.business.phone;
   }
 
-  normalized.instagram_url = normalizeInstagramUrl(normalized.instagram_url);
+  normalized.instagram_url = normalizeSocialUrl(normalized.instagram_url);
   normalized.cover_image = String(normalized.cover_image || "").trim();
   normalized.profile_image = String(normalized.profile_image || "").trim();
   normalized.preparation_message = String(normalized.preparation_message || DEFAULT_DATA.business.preparation_message).trim();
+  normalized.features = {
+    ...DEFAULT_DATA.business.features,
+    ...(business?.features || {})
+  };
   return normalized;
 }
 
@@ -312,7 +347,12 @@ function normalizeUsers(users) {
       lastName: String(user?.lastName || "").trim(),
       phone: String(user?.phone || "").trim(),
       password: String(user?.password || ""),
-      owner_note: String(user?.owner_note || "").trim()
+      owner_note: String(user?.owner_note || "").trim(),
+      is_blocked: Boolean(user?.is_blocked),
+      blocked_reason: String(user?.blocked_reason || "").trim(),
+      blocked_at: String(user?.blocked_at || ""),
+      no_show_count: Number(user?.no_show_count || 0),
+      created_at: String(user?.created_at || new Date().toISOString())
     }))
     .filter((user) => normalizePhoneNumber(user.phone));
 }
@@ -323,15 +363,58 @@ function normalizeBookings(bookings, staff, services) {
   return bookings.map((booking) => {
     const service = services.find((item) => item.id === booking.service_id);
     const assignedStaff = staff.find((member) => member.id === booking.staff_id) || fallbackStaff;
+    const normalizedServiceIds = Array.isArray(booking.service_ids) && booking.service_ids.length
+      ? booking.service_ids.map((serviceId) => String(serviceId).trim()).filter(Boolean)
+      : booking.service_id
+        ? [String(booking.service_id).trim()]
+        : [];
+    const normalizedServiceNames = Array.isArray(booking.service_names) && booking.service_names.length
+      ? booking.service_names.map((serviceName) => String(serviceName).trim()).filter(Boolean)
+      : booking.service_name
+        ? [String(booking.service_name).trim()]
+        : service
+          ? [service.name]
+          : [];
+
     return {
       ...booking,
+      service_ids: normalizedServiceIds,
+      service_names: normalizedServiceNames,
+      service_name: String(booking.service_name || normalizedServiceNames.join(" + ") || service?.name || "").trim(),
       duration_minutes: Number(booking.duration_minutes || service?.duration || 30),
       arrival_status: normalizeArrivalStatus(booking.arrival_status, booking.status),
       hidden_for_customer: Boolean(booking.hidden_for_customer),
+      attendance_confirmation_requested_at: String(booking.attendance_confirmation_requested_at || ""),
+      attendance_confirmation_status: normalizeAttendanceConfirmationStatus(booking.attendance_confirmation_status),
+      attendance_confirmation_answered_at: String(booking.attendance_confirmation_answered_at || ""),
       staff_id: assignedStaff.id,
       staff_name: assignedStaff.name
     };
   });
+}
+
+function normalizeWaitlistEntries(entries) {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  return entries
+    .map((entry, index) => ({
+      id: String(entry?.id || `waitlist-${Date.now()}-${index}`),
+      customer_phone: String(entry?.customer_phone || "").trim(),
+      customer_name: String(entry?.customer_name || "").trim(),
+      service_id: String(entry?.service_id || "").trim(),
+      service_name: String(entry?.service_name || "").trim(),
+      booking_date: String(entry?.booking_date || "").trim(),
+      notes: String(entry?.notes || "").trim(),
+      status: ["waiting", "notified", "removed"].includes(String(entry?.status || "").trim())
+        ? String(entry.status).trim()
+        : "waiting",
+      created_at: String(entry?.created_at || new Date().toISOString()),
+      notified_at: String(entry?.notified_at || "")
+    }))
+    .filter((entry) => normalizePhoneNumber(entry.customer_phone) && entry.service_id && entry.booking_date)
+    .sort((left, right) => String(left.created_at).localeCompare(String(right.created_at)));
 }
 
 function normalizeNotifications(notifications) {
@@ -486,7 +569,7 @@ function getBookingCustomerNotificationUserId(booking) {
 }
 
 function getCurrentNotificationUserId() {
-  if (session.role === "seller") {
+  if (session.role === "seller" || isSellerRemembered()) {
     return "owner";
   }
 
@@ -600,12 +683,54 @@ function notifyCustomerAppointmentUpdated(booking, updateText) {
   );
 }
 
-function normalizeInstagramUrl(value) {
+function notifyCustomerWaitlistOpened(waitlistEntry, cancelledBooking) {
+  if (!waitlistEntry || !cancelledBooking) {
+    return;
+  }
+
+  pushAppNotification(
+    getCustomerNotificationUserId(waitlistEntry.customer_phone),
+    "התפנה מקום ברשימת ההמתנה",
+    `התפנה מקום ל${waitlistEntry.service_name} בתאריך ${formatDisplayDate(cancelledBooking.booking_date)} בשעה ${cancelledBooking.booking_time}.`,
+    "appointment_updated"
+  );
+}
+
+function notifyCustomerAttendanceConfirmation(booking) {
+  pushAppNotification(
+    getBookingCustomerNotificationUserId(booking),
+    "אישור הגעה לתור",
+    `מחר יש לך תור ל${booking.service_name} ב${getBookingDateTimeText(booking)}. נשמח לדעת אם את מגיעה.`,
+    "appointment_updated"
+  );
+}
+
+function normalizeSocialUrl(value) {
   const trimmed = String(value || "").trim();
   if (!trimmed || trimmed === "https://instagram.com") {
     return "";
   }
   return trimmed;
+}
+
+function getSocialNetworkLabel(value) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase().replace(/^www\./, "");
+    if (hostname.includes("instagram.com")) return "אינסטגרם";
+    if (hostname.includes("facebook.com") || hostname === "fb.com") return "פייסבוק";
+    if (hostname.includes("tiktok.com")) return "טיקטוק";
+    if (hostname.includes("youtube.com") || hostname === "youtu.be") return "יוטיוב";
+    if (hostname === "x.com" || hostname.includes("twitter.com")) return "X";
+    if (hostname.includes("linkedin.com")) return "LinkedIn";
+  } catch (error) {
+    return "רשת חברתית";
+  }
+
+  return "רשת חברתית";
+}
+
+function isBusinessFeatureEnabled(featureName) {
+  return state.business.features?.[featureName] !== false;
 }
 
 function formatPrice(price) {
@@ -636,6 +761,28 @@ function normalizeArrivalStatus(value, bookingStatus) {
   }
 
   return "waiting";
+}
+
+function normalizeAttendanceConfirmationStatus(value) {
+  const normalized = String(value || "").trim();
+  if (["pending", "confirmed", "declined"].includes(normalized)) {
+    return normalized;
+  }
+
+  return "";
+}
+
+function formatAttendanceConfirmationStatus(status) {
+  if (status === "confirmed") {
+    return "אישרה הגעה";
+  }
+  if (status === "declined") {
+    return "סימנה שלא תגיע";
+  }
+  if (status === "pending") {
+    return "ממתין לאישור הגעה";
+  }
+  return "";
 }
 
 function formatArrivalStatus(status) {
@@ -901,6 +1048,33 @@ function getCurrentCustomer() {
   return state.users.find((user) => isSamePhone(user.phone, session.customerPhone)) || null;
 }
 
+function getCustomerRecordByPhone(phone) {
+  const normalizedPhone = normalizePhoneNumber(phone);
+  if (!normalizedPhone) {
+    return null;
+  }
+
+  return state.users.find((user) => isSamePhone(user.phone, normalizedPhone)) || null;
+}
+
+function isCustomerBlocked(phone = session.customerPhone) {
+  return Boolean(getCustomerRecordByPhone(phone)?.is_blocked);
+}
+
+function getSelectedWaitlistEntry() {
+  const service = getSelectedService();
+  if (!service || !uiState.selectedDate) {
+    return null;
+  }
+
+  return state.waitlistEntries.find((entry) =>
+    entry.status === "waiting" &&
+    entry.booking_date === uiState.selectedDate &&
+    entry.service_id === service.id &&
+    isSamePhone(entry.customer_phone, session.customerPhone)
+  ) || null;
+}
+
 function getCustomerBookingsForSession() {
   if (!session.customerPhone) {
     return [];
@@ -1010,6 +1184,8 @@ function hideBookingSuccess() {
   bookingSuccessPanel.classList.add("is-hidden");
   bookingSuccessTitle.textContent = "ההזמנה נשלחה בהצלחה";
   bookingSuccessText.textContent = "הבקשה נשמרה ומחכה לאישור של בעלת העסק.";
+  bookingPreparationMessage.textContent = "";
+  bookingPreparationMessage.classList.add("is-hidden");
   bookingSuccessSummary.innerHTML = "";
   bookingSuccessCalendarButton.classList.add("is-hidden");
   delete bookingSuccessCalendarButton.dataset.bookingId;
@@ -1027,8 +1203,15 @@ function showBookingSuccess(booking) {
   bookingSuccessText.textContent = isChangeRequest
     ? "בקשת השינוי נשמרה. התור הישן נשאר שמור עד שבעלת העסק תאשר את התור החדש."
     : "הבקשה נשמרה ומחכה לאישור של בעלת העסק.";
+  if (isBusinessFeatureEnabled("preparationMessage") && state.business.preparation_message) {
+    bookingPreparationMessage.textContent = state.business.preparation_message;
+    bookingPreparationMessage.classList.remove("is-hidden");
+  } else {
+    bookingPreparationMessage.textContent = "";
+    bookingPreparationMessage.classList.add("is-hidden");
+  }
   bookingSuccessCalendarButton.dataset.bookingId = booking.id;
-  bookingSuccessCalendarButton.classList.remove("is-hidden");
+  bookingSuccessCalendarButton.classList.toggle("is-hidden", !isBusinessFeatureEnabled("calendarExport"));
   bookingSuccessPanel.classList.remove("is-hidden");
 }
 
@@ -1047,22 +1230,38 @@ function renderChangeModeBanner() {
 
 function updateContactLinks() {
   const phoneNumber = (state.business.phone || "").replace(/[^0-9+]/g, "");
-  const instagramUrl = normalizeInstagramUrl(state.business.instagram_url);
+  const socialUrl = normalizeSocialUrl(state.business.instagram_url);
+  const showWhatsapp = isBusinessFeatureEnabled("whatsapp") && Boolean(phoneNumber);
+  const showPhone = isBusinessFeatureEnabled("phone") && Boolean(phoneNumber);
+  const showWaze = isBusinessFeatureEnabled("waze") && Boolean(state.business.address);
+  const showSocial = isBusinessFeatureEnabled("socialLink") && Boolean(socialUrl);
 
-  whatsAppLink.href = phoneNumber ? `https://wa.me/${phoneNumber}` : "#";
-  phoneLink.href = phoneNumber ? `tel:${phoneNumber}` : "#";
-  wazeLink.href = `https://waze.com/ul?q=${encodeURIComponent(state.business.address || "")}`;
+  whatsAppLink.classList.toggle("is-hidden", !showWhatsapp);
+  phoneLink.classList.toggle("is-hidden", !showPhone);
+  wazeLink.classList.toggle("is-hidden", !showWaze);
+  if (showWhatsapp) whatsAppLink.href = `https://wa.me/${phoneNumber}`;
+  else whatsAppLink.removeAttribute("href");
+  if (showPhone) phoneLink.href = `tel:${phoneNumber}`;
+  else phoneLink.removeAttribute("href");
+  if (showWaze) wazeLink.href = `https://waze.com/ul?q=${encodeURIComponent(state.business.address || "")}`;
+  else wazeLink.removeAttribute("href");
 
-  instagramLink.classList.toggle("is-hidden", !instagramUrl);
-  if (instagramUrl) {
-    instagramLink.href = instagramUrl;
-    instagramLink.target = "_blank";
-    instagramLink.rel = "noreferrer";
+  socialLink.classList.toggle("is-hidden", !showSocial);
+  if (showSocial) {
+    const socialLabel = getSocialNetworkLabel(socialUrl);
+    socialLink.href = socialUrl;
+    socialLink.target = "_blank";
+    socialLink.rel = "noreferrer";
+    socialLink.setAttribute("aria-label", socialLabel);
+    socialLink.title = socialLabel;
   } else {
-    instagramLink.removeAttribute("href");
-    instagramLink.removeAttribute("target");
-    instagramLink.removeAttribute("rel");
+    socialLink.removeAttribute("href");
+    socialLink.removeAttribute("target");
+    socialLink.removeAttribute("rel");
+    socialLink.setAttribute("aria-label", "רשת חברתית");
+    socialLink.title = "רשת חברתית";
   }
+  contactRow.classList.toggle("is-hidden", !showWhatsapp && !showPhone && !showWaze && !showSocial);
 }
 
 function applyBusinessImages() {
@@ -1082,6 +1281,7 @@ function renderBusiness() {
   brandName.textContent = state.business.name;
   businessName.textContent = state.business.name;
   businessDescription.textContent = state.business.description;
+  businessDescription.classList.toggle("is-hidden", !isBusinessFeatureEnabled("businessDescription"));
   businessAddress.textContent = state.business.address;
   businessPhoneText.textContent = state.business.phone;
   businessPhoneText.classList.toggle("is-hidden", !state.business.phone);
@@ -1283,6 +1483,116 @@ function hasAvailabilityOnDate(dateValue) {
   return getAvailableSlots(dateValue).length > 0;
 }
 
+function maybePromoteWaitlistForBooking(booking) {
+  if (!booking || !isBusinessFeatureEnabled("waitingList")) {
+    return;
+  }
+
+  const nextEntry = state.waitlistEntries.find((entry) =>
+    entry.status === "waiting" &&
+    entry.booking_date === booking.booking_date &&
+    entry.service_id === booking.service_id
+  );
+
+  if (!nextEntry) {
+    return;
+  }
+
+  nextEntry.status = "notified";
+  nextEntry.notified_at = new Date().toISOString();
+  notifyCustomerWaitlistOpened(nextEntry, booking);
+}
+
+function joinWaitlistForCurrentSelection() {
+  const service = getSelectedService();
+  const currentCustomer = getCurrentCustomer();
+
+  if (session.role !== "customer") {
+    openAuthModal("customer");
+    return;
+  }
+
+  if (!isBusinessFeatureEnabled("waitingList") || !service || !uiState.selectedDate) {
+    return;
+  }
+
+  if (isCustomerBlocked()) {
+    appUi.toast("החשבון שלך חסום כרגע לקביעת תורים חדשים.", { variant: "error" });
+    return;
+  }
+
+  if (getSelectedWaitlistEntry()) {
+    appUi.toast("כבר נרשמת לרשימת ההמתנה של היום הזה.", { variant: "info" });
+    return;
+  }
+
+  state.waitlistEntries.push({
+    id: `waitlist-${Date.now()}`,
+    customer_phone: currentCustomer?.phone || session.customerPhone || "",
+    customer_name: buildCustomerFullName(currentCustomer?.firstName, currentCustomer?.lastName) || "לקוחה",
+    service_id: service.id,
+    service_name: service.name,
+    booking_date: uiState.selectedDate,
+    notes: uiState.bookingDraft.notes || "",
+    status: "waiting",
+    created_at: new Date().toISOString(),
+    notified_at: ""
+  });
+  state.waitlistEntries = normalizeWaitlistEntries(state.waitlistEntries);
+  saveState();
+  rerenderAll();
+  appUi.toast("נרשמת לרשימת ההמתנה. אם יתפנה מקום תקבלי התראה.", { variant: "success" });
+}
+
+function shouldOfferAttendanceConfirmation(booking) {
+  if (!isBusinessFeatureEnabled("attendanceConfirmation")) {
+    return false;
+  }
+
+  if (!booking || booking.status !== "approved" || !booking.attendance_confirmation_requested_at) {
+    return false;
+  }
+
+  return booking.attendance_confirmation_status === "pending";
+}
+
+function requestAttendanceConfirmation(booking, options = {}) {
+  if (!booking || booking.status !== "approved" || !isBusinessFeatureEnabled("attendanceConfirmation")) {
+    return false;
+  }
+
+  if (booking.booking_date !== localDateValue(new Date(Date.now() + 86400000)) && !options.force) {
+    return false;
+  }
+
+  if (booking.attendance_confirmation_requested_at) {
+    return false;
+  }
+
+  booking.attendance_confirmation_requested_at = new Date().toISOString();
+  booking.attendance_confirmation_status = "pending";
+  booking.attendance_confirmation_answered_at = "";
+  notifyCustomerAttendanceConfirmation(booking);
+  return true;
+}
+
+function runAttendanceConfirmationSweep() {
+  if (!isBusinessFeatureEnabled("attendanceConfirmation")) {
+    return;
+  }
+
+  let changed = false;
+  state.bookings.forEach((booking) => {
+    if (requestAttendanceConfirmation(booking)) {
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    saveState();
+  }
+}
+
 function renderTodayAvailability() {
   const service = getSelectedService();
 
@@ -1401,6 +1711,14 @@ function groupTimes(times) {
 function renderTimeOptions() {
   const availableTimes = uiState.selectedDate ? getAvailableSlots(uiState.selectedDate) : [];
   const grouped = groupTimes(availableTimes);
+  const canOfferWaitlist = Boolean(
+    waitlistPrompt &&
+    session.role === "customer" &&
+    uiState.selectedDate &&
+    !availableTimes.length &&
+    isBusinessFeatureEnabled("waitingList") &&
+    getSelectedService()
+  );
 
   if (!availableTimes.includes(uiState.selectedTime)) {
     uiState.selectedTime = "";
@@ -1423,32 +1741,59 @@ function renderTimeOptions() {
     .join("");
 
   emptyTimesState.classList.toggle("is-hidden", availableTimes.length > 0);
+  waitlistPrompt?.classList.toggle("is-hidden", !canOfferWaitlist);
+  if (joinWaitlistButton) {
+    joinWaitlistButton.disabled = !canOfferWaitlist || Boolean(getSelectedWaitlistEntry()) || isCustomerBlocked();
+    joinWaitlistButton.textContent = getSelectedWaitlistEntry() ? "כבר הצטרפת לרשימה" : "הצטרפות לרשימת המתנה";
+  }
 }
 
 function renderDetailsForm() {
   const currentCustomer = getCurrentCustomer();
   const sourceBooking = getReplacementSourceBooking();
-  const fullName = currentCustomer
+  const accountFullName = currentCustomer
     ? [currentCustomer.firstName, currentCustomer.lastName].filter(Boolean).join(" ")
     : "";
 
-  bookingForm.elements.fullName.value = fullName;
-  bookingForm.elements.phone.value = currentCustomer?.phone || "";
+  if (currentCustomer && !uiState.bookingDraft.fullName) {
+    uiState.bookingDraft.fullName = accountFullName;
+  }
+  if (currentCustomer && !uiState.bookingDraft.phone) {
+    uiState.bookingDraft.phone = currentCustomer.phone || "";
+  }
+
+  const draftFields = {
+    fullName: uiState.bookingDraft.fullName || accountFullName,
+    phone: uiState.bookingDraft.phone || currentCustomer?.phone || "",
+    notes: uiState.bookingDraft.notes
+  };
+
+  Object.entries(draftFields).forEach(([fieldName, value]) => {
+    const field = bookingForm.elements[fieldName];
+    if (field && document.activeElement !== field) {
+      field.value = value;
+    }
+  });
 
   const isLoggedIn = session.role === "customer";
+  const blockedCustomer = isCustomerBlocked();
   if (isLoggedIn) {
-    detailsNotice.textContent = uiState.replacementBookingId
-      ? "את משנה עכשיו תור קיים. בקשת השינוי תישלח לאישור, והתור הישן יישאר שמור עד שבעלת העסק תאשר את התור החדש."
-      : "הפרטים נמשכו מהחשבון שלך. אפשר לעדכן אותם לפני אישור.";
+    detailsNotice.textContent = blockedCustomer
+      ? "החשבון שלך חסום כרגע לקביעת תורים חדשים. אפשר לפנות לבעלת העסק כדי להסדיר את זה."
+      : uiState.replacementBookingId
+        ? "את משנה עכשיו תור קיים. בקשת השינוי תישלח לאישור, והתור הישן יישאר שמור עד שבעלת העסק תאשר את התור החדש."
+        : "הפרטים נמשכו מהחשבון שלך. אפשר לעדכן אותם לפני אישור.";
   } else {
     detailsNotice.textContent = "כדי לאשר תור צריך להתחבר כלקוחה. בלי התחברות אי אפשר לשמור הזמנה.";
   }
 
   bookingSubmitButton.textContent = sourceBooking ? "שליחת שינוי תור" : "קבע תור";
+  bookingSubmitButton.disabled = blockedCustomer;
 
   Array.from(bookingForm.elements).forEach((element) => {
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLButtonElement) {
       element.disabled = false;
+      element.readOnly = false;
     }
   });
 }
@@ -1503,7 +1848,13 @@ function renderCustomerBookings() {
       const presentation = getCustomerBookingPresentation(booking);
       const pendingChangeRequest = findPendingChangeRequestForBooking(booking.id);
       const originalBooking = booking.replaces_booking_id ? findBookingById(booking.replaces_booking_id) : null;
-      const canChangeThisBooking = ["pending", "approved"].includes(booking.status) && !booking.replaces_booking_id && !pendingChangeRequest;
+      const canChangeThisBooking = isBusinessFeatureEnabled("customerRescheduling") && ["pending", "approved"].includes(booking.status) && !booking.replaces_booking_id && !pendingChangeRequest;
+      const canExportCalendar = isBusinessFeatureEnabled("calendarExport");
+      const preparationMessage = isBusinessFeatureEnabled("preparationMessage") && booking.status === "approved"
+        ? state.business.preparation_message
+        : "";
+      const attendanceStatusText = formatAttendanceConfirmationStatus(booking.attendance_confirmation_status);
+      const canRespondAttendance = shouldOfferAttendanceConfirmation(booking);
 
       return `
         <article class="booking-card status-card-${presentation.statusClass}">
@@ -1520,7 +1871,9 @@ function renderCustomerBookings() {
             <span>${booking.staff_name}</span>
           </div>
           ${booking.status === "approved" && booking.arrival_status ? `<div class="booking-note">מצב הגעה: ${formatArrivalStatus(booking.arrival_status)}</div>` : ""}
+          ${attendanceStatusText ? `<div class="booking-note">אישור הגעה: ${attendanceStatusText}</div>` : ""}
           ${booking.notes ? `<div class="booking-note">הערה: ${booking.notes}</div>` : ""}
+          ${preparationMessage ? `<div class="booking-note">הכנה לתור: ${preparationMessage}</div>` : ""}
           ${
             pendingChangeRequest
               ? `<div class="change-request-strip">יש כרגע בקשת שינוי פתוחה לתאריך ${formatDisplayDate(pendingChangeRequest.booking_date)} בשעה ${pendingChangeRequest.booking_time}. התור הישן נשאר שמור עד לאישור.</div>`
@@ -1535,17 +1888,21 @@ function renderCustomerBookings() {
             presentation.bucket === "active"
               ? `
                 <div class="booking-card-actions">
-                  <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
+                  ${canExportCalendar ? `<button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>` : ""}
                   ${canChangeThisBooking ? `<button class="ghost-button replace-booking-button" type="button" data-booking-id="${booking.id}">שינוי תור</button>` : ""}
+                  ${canRespondAttendance ? `<button class="ghost-button confirm-arrival-button" type="button" data-booking-id="${booking.id}" data-attendance-response="confirmed">אני מגיעה</button>` : ""}
+                  ${canRespondAttendance ? `<button class="ghost-button decline-arrival-button" type="button" data-booking-id="${booking.id}" data-attendance-response="declined">לא אוכל להגיע</button>` : ""}
                   <button class="danger-button cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול</button>
                 </div>
               `
               : presentation.bucket === "completed"
-                ? `
-                  <div class="booking-card-actions">
-                    <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
-                  </div>
-                `
+                ? canExportCalendar
+                  ? `
+                    <div class="booking-card-actions">
+                      <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
+                    </div>
+                  `
+                  : ""
                 : `
                   <div class="booking-card-actions">
                     <button class="ghost-button hide-cancelled-booking-button" type="button" data-booking-id="${booking.id}">מחיקה מהרשימה</button>
@@ -1756,7 +2113,7 @@ function renderEditors() {
   businessForm.elements.description.value = state.business.description;
   businessForm.elements.address.value = state.business.address;
   businessForm.elements.phone.value = state.business.phone;
-  businessForm.elements.instagramUrl.value = normalizeInstagramUrl(state.business.instagram_url);
+  businessForm.elements.instagramUrl.value = normalizeSocialUrl(state.business.instagram_url);
 
   sellerCredentialsForm.elements.username.value = state.sellerCredentials.username;
   sellerCredentialsForm.elements.password.value = "";
@@ -1764,16 +2121,20 @@ function renderEditors() {
 
 function updateSessionUi() {
   const customerLoggedIn = session.role === "customer";
-  const sellerLoggedIn = session.role === "seller";
+  const sellerLoggedIn = session.role === "seller" || isSellerRemembered();
+  const customerUiVisible = customerLoggedIn && !sellerLoggedIn;
 
-  logoutButton.classList.toggle("is-hidden", !session.role);
-  openCustomerLogin.classList.toggle("is-hidden", customerLoggedIn);
+  logoutButton.classList.toggle("is-hidden", !customerUiVisible);
+  openCustomerLogin.classList.toggle("is-hidden", customerLoggedIn || sellerLoggedIn);
   openSellerLogin.classList.toggle("is-hidden", sellerLoggedIn);
-  customerBookingsPanel.classList.toggle("is-hidden", !customerLoggedIn);
-  sellerPanel.classList.toggle("is-hidden", !sellerLoggedIn);
+  returnToOwnerButton.classList.toggle("is-hidden", !sellerLoggedIn);
+  sellerSiteLogoutButton.classList.toggle("is-hidden", !sellerLoggedIn);
+  customerBookingsPanel.classList.toggle("is-hidden", !customerUiVisible);
+  sellerPanel.classList.add("is-hidden");
 }
 
 function rerenderAll() {
+  runAttendanceConfirmationSweep();
   renderBusiness();
   renderWizardSteps();
   renderChangeModeBanner();
@@ -1834,6 +2195,19 @@ function ensureScheduleSelected() {
 }
 
 function openAuthModal(role) {
+  if (role === "customer") {
+    const draftName = parseFullName(uiState.bookingDraft.fullName);
+    if (!customerLoginForm.elements.firstName.value) {
+      customerLoginForm.elements.firstName.value = draftName.firstName;
+    }
+    if (!customerLoginForm.elements.lastName.value) {
+      customerLoginForm.elements.lastName.value = draftName.lastName;
+    }
+    if (!customerLoginForm.elements.phone.value) {
+      customerLoginForm.elements.phone.value = uiState.bookingDraft.phone;
+    }
+  }
+
   authModal.classList.remove("is-hidden");
   showAuthTab(role);
 }
@@ -1853,16 +2227,45 @@ function showAuthTab(tabName) {
 
 function updateCurrentCustomer(fullName, phone) {
   const customer = getCurrentCustomer();
+  const nameParts = parseFullName(fullName);
+  if (!customer) {
+    state.users.push({
+      firstName: nameParts.firstName,
+      lastName: nameParts.lastName,
+      phone,
+      password: "",
+      owner_note: "",
+      is_blocked: false,
+      blocked_reason: "",
+      blocked_at: "",
+      no_show_count: 0,
+      created_at: new Date().toISOString()
+    });
+  } else {
+    customer.firstName = nameParts.firstName;
+    customer.lastName = nameParts.lastName;
+    customer.phone = phone;
+    customer.created_at ||= new Date().toISOString();
+    customer.no_show_count = Number(customer.no_show_count || 0);
+  }
+  session.customerPhone = normalizePhoneNumber(phone);
+  rememberCustomerSession(session.customerPhone);
+}
+
+function applyNoShowCounterChange(booking, nextArrivalStatus) {
+  const customer = getCustomerRecordByPhone(booking?.customer_phone);
   if (!customer) {
     return;
   }
 
-  const nameParts = parseFullName(fullName);
-  customer.firstName = nameParts.firstName;
-  customer.lastName = nameParts.lastName;
-  customer.phone = phone;
-  session.customerPhone = normalizePhoneNumber(phone);
-  rememberCustomerSession(session.customerPhone);
+  const previousStatus = String(booking.arrival_status || "");
+  if (previousStatus !== "no_show" && nextArrivalStatus === "no_show") {
+    customer.no_show_count = Number(customer.no_show_count || 0) + 1;
+  }
+
+  if (previousStatus === "no_show" && nextArrivalStatus !== "no_show") {
+    customer.no_show_count = Math.max(0, Number(customer.no_show_count || 0) - 1);
+  }
 }
 
 function resolveAssignedStaff(dateValue, timeValue, service) {
@@ -1903,6 +2306,13 @@ logoutButton.addEventListener("click", () => {
   session.role = null;
   session.customerPhone = null;
   uiState.customerBookingsView = "active";
+  uiState.bookingDraft = { fullName: "", phone: "", notes: "" };
+  bookingForm.reset();
+  rerenderAll();
+});
+
+sellerSiteLogoutButton.addEventListener("click", () => {
+  clearRememberedSellerSession();
   rerenderAll();
 });
 
@@ -1914,6 +2324,9 @@ cancelChangeModeButton.addEventListener("click", () => {
 });
 
 bookingSuccessCalendarButton.addEventListener("click", () => {
+  if (!isBusinessFeatureEnabled("calendarExport")) {
+    return;
+  }
   openCalendarChoiceModal(bookingSuccessCalendarButton.dataset.bookingId);
 });
 
@@ -2049,6 +2462,17 @@ goToDetailsStep.addEventListener("click", () => {
 
 backToScheduleStep.addEventListener("click", () => goToStep(3));
 
+bookingForm.addEventListener("input", (event) => {
+  const field = event.target;
+  if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  if (["fullName", "phone", "notes"].includes(field.name)) {
+    uiState.bookingDraft[field.name] = field.value;
+  }
+});
+
 customerLoginForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const formData = new FormData(customerLoginForm);
@@ -2073,17 +2497,33 @@ customerLoginForm.addEventListener("submit", (event) => {
     existingUser.lastName = lastName || existingUser.lastName;
     existingUser.phone = phone || existingUser.phone;
   } else {
-    state.users.push({ firstName, lastName, phone, password, owner_note: "" });
+    state.users.push({
+      firstName,
+      lastName,
+      phone,
+      password,
+      owner_note: "",
+      is_blocked: false,
+      blocked_reason: "",
+      blocked_at: "",
+      no_show_count: 0,
+      created_at: new Date().toISOString()
+    });
   }
 
   session.role = "customer";
   session.customerPhone = normalizedPhone;
   uiState.customerBookingsView = "active";
+  uiState.bookingDraft.fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+  uiState.bookingDraft.phone = phone;
   rememberCustomerSession(normalizedPhone);
   notificationCenter?.rememberCurrentNotifications();
   saveState();
   closeAuthModal();
   rerenderAll();
+  if (isCustomerBlocked(normalizedPhone)) {
+    appUi.toast("התחברת, אבל החשבון חסום כרגע לקביעת תורים חדשים.", { variant: "warning" });
+  }
 });
 
 sellerLoginForm.addEventListener("submit", (event) => {
@@ -2124,6 +2564,11 @@ bookingForm.addEventListener("submit", async (event) => {
   const phone = String(bookingForm.elements.phone.value).trim();
   const notes = String(bookingForm.elements.notes.value).trim();
 
+  if (isCustomerBlocked()) {
+    appUi.toast("החשבון שלך חסום כרגע לקביעת תורים חדשים.", { variant: "error" });
+    return;
+  }
+
   if (!fullName || !phone) {
     appUi.toast("צריך למלא שם מלא וטלפון.", { variant: "error" });
     return;
@@ -2146,7 +2591,9 @@ bookingForm.addEventListener("submit", async (event) => {
   const newBooking = {
     id: `booking-${Date.now()}`,
     service_id: service.id,
+    service_ids: [service.id],
     service_name: service.name,
+    service_names: [service.name],
     staff_id: assignedStaff.id,
     staff_name: assignedStaff.name,
     customer_first_name: nameParts.firstName,
@@ -2157,7 +2604,10 @@ bookingForm.addEventListener("submit", async (event) => {
     booking_time: uiState.selectedTime,
     duration_minutes: service.duration,
     status: "pending",
-    replaces_booking_id: replacedBookingId || null
+    replaces_booking_id: replacedBookingId || null,
+    attendance_confirmation_requested_at: "",
+    attendance_confirmation_status: "",
+    attendance_confirmation_answered_at: ""
   };
 
   state.bookings.push(newBooking);
@@ -2166,9 +2616,13 @@ bookingForm.addEventListener("submit", async (event) => {
   } else {
     notifyOwnerAppointmentBooked(newBooking);
   }
+  uiState.bookingDraft = {
+    fullName: "",
+    phone: "",
+    notes: ""
+  };
   clearReplacementBooking();
   saveState();
-  bookingForm.elements.notes.value = "";
   rerenderAll();
   showWizardStep(4);
   showBookingSuccess(newBooking);
@@ -2183,7 +2637,7 @@ businessForm.addEventListener("submit", (event) => {
     description: String(businessForm.elements.description.value).trim(),
     address: String(businessForm.elements.address.value).trim(),
     phone: String(businessForm.elements.phone.value).trim(),
-    instagram_url: normalizeInstagramUrl(businessForm.elements.instagramUrl.value)
+    instagram_url: normalizeSocialUrl(businessForm.elements.instagramUrl.value)
   };
   saveState();
   rerenderAll();
@@ -2373,7 +2827,9 @@ sellerCalendarList.addEventListener("change", (event) => {
     return;
   }
 
-  booking.arrival_status = normalizeArrivalStatus(target.value, "approved");
+  const nextArrivalStatus = normalizeArrivalStatus(target.value, "approved");
+  applyNoShowCounterChange(booking, nextArrivalStatus);
+  booking.arrival_status = nextArrivalStatus;
   notifyOwnerAppointmentUpdated(booking, `עודכן מצב הגעה ל${formatArrivalStatus(booking.arrival_status)}`);
   notifyCustomerAppointmentUpdated(booking, `מצב ההגעה עודכן ל${formatArrivalStatus(booking.arrival_status)}`);
   saveState();
@@ -2411,12 +2867,13 @@ sellerBookingsList.addEventListener("click", async (event) => {
     }
 
     clearRejectUndo(false);
-    booking.status = "cancelled";
-    booking.arrival_status = null;
-    notifyOwnerAppointmentCancelled(booking, "בעל העסק");
-    notifyCustomerAppointmentCancelledByOwner(booking);
-    saveState();
-    rerenderAll();
+  booking.status = "cancelled";
+  booking.arrival_status = null;
+  notifyOwnerAppointmentCancelled(booking, "בעל העסק");
+  notifyCustomerAppointmentCancelledByOwner(booking);
+  maybePromoteWaitlistForBooking(booking);
+  saveState();
+  rerenderAll();
     return;
   }
 
@@ -2466,7 +2923,9 @@ sellerBookingsList.addEventListener("change", (event) => {
     return;
   }
 
-  booking.arrival_status = normalizeArrivalStatus(target.value, "approved");
+  const nextArrivalStatus = normalizeArrivalStatus(target.value, "approved");
+  applyNoShowCounterChange(booking, nextArrivalStatus);
+  booking.arrival_status = nextArrivalStatus;
   notifyOwnerAppointmentUpdated(booking, `עודכן מצב הגעה ל${formatArrivalStatus(booking.arrival_status)}`);
   notifyCustomerAppointmentUpdated(booking, `מצב ההגעה עודכן ל${formatArrivalStatus(booking.arrival_status)}`);
   saveState();
@@ -2480,11 +2939,17 @@ myBookingsList.addEventListener("click", async (event) => {
   }
 
   if (target.classList.contains("calendar-choice-button")) {
+    if (!isBusinessFeatureEnabled("calendarExport")) {
+      return;
+    }
     openCalendarChoiceModal(target.dataset.bookingId);
     return;
   }
 
   if (target.classList.contains("replace-booking-button")) {
+    if (!isBusinessFeatureEnabled("customerRescheduling")) {
+      return;
+    }
     const booking = findBookingById(target.dataset.bookingId);
     if (!booking || !isSamePhone(booking.customer_phone, session.customerPhone) || !["pending", "approved"].includes(booking.status)) {
       return;
@@ -2522,6 +2987,24 @@ myBookingsList.addEventListener("click", async (event) => {
     return;
   }
 
+  if (target.classList.contains("confirm-arrival-button") || target.classList.contains("decline-arrival-button")) {
+    const booking = findBookingById(target.dataset.bookingId);
+    const response = target.dataset.attendanceResponse;
+    if (!booking || !isSamePhone(booking.customer_phone, session.customerPhone) || !shouldOfferAttendanceConfirmation(booking)) {
+      return;
+    }
+
+    booking.attendance_confirmation_status = response === "confirmed" ? "confirmed" : "declined";
+    booking.attendance_confirmation_answered_at = new Date().toISOString();
+    notifyOwnerAppointmentUpdated(
+      booking,
+      response === "confirmed" ? "הלקוחה אישרה הגעה" : "הלקוחה סימנה שלא תגיע"
+    );
+    saveState();
+    rerenderAll();
+    return;
+  }
+
   if (!target.classList.contains("cancel-booking-button")) {
     return;
   }
@@ -2543,6 +3026,7 @@ myBookingsList.addEventListener("click", async (event) => {
   booking.status = "cancelled";
   booking.arrival_status = null;
   notifyOwnerAppointmentCancelled(booking);
+  maybePromoteWaitlistForBooking(booking);
   saveState();
   rerenderAll();
 });

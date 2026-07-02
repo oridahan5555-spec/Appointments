@@ -8,9 +8,13 @@ create table if not exists business (
   address text not null default '',
   phone text not null default '',
   instagram_url text default 'https://instagram.com',
+  features jsonb not null default '{"businessDescription":true,"preparationMessage":true,"socialLink":true,"whatsapp":true,"phone":true,"waze":true,"calendarExport":true,"customerRescheduling":true}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table business
+  add column if not exists features jsonb not null default '{"businessDescription":true,"preparationMessage":true,"socialLink":true,"whatsapp":true,"phone":true,"waze":true,"calendarExport":true,"customerRescheduling":true}'::jsonb;
 
 create table if not exists services (
   id uuid primary key default gen_random_uuid(),

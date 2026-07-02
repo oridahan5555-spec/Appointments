@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
   <title>ניהול העסק</title>
   <meta
     name="description"
@@ -55,6 +56,7 @@
             <a href="#ownerOverview">לוח בקרה <span>←</span></a>
             <a href="#ownerCalendarSection">יומן <span>←</span></a>
             <a href="#ownerBookingsSection">בקשות תור <span>←</span></a>
+            <a href="#ownerWaitlistSection">רשימת המתנה <span>←</span></a>
             <a href="#ownerCustomersSection">לקוחות והערות <span>←</span></a>
             <a href="#ownerServicesSection">שירותים ומחירים <span>←</span></a>
             <a href="#ownerHoursSection">שעות עבודה <span>←</span></a>
@@ -134,10 +136,18 @@
           <div id="sellerBookingsList" class="cards-list"></div>
         </section>
 
+        <section class="panel-card owner-section-anchor" id="ownerWaitlistSection">
+          <div class="section-head">
+            <h2>רשימת המתנה</h2>
+            <p>כאן רואים מי מחכה למקום פנוי. אם תור מתבטל, המערכת יכולה לשלוח ללקוחה הבאה הודעה שהתפנה מקום.</p>
+          </div>
+          <div id="waitlistList" class="cards-list"></div>
+        </section>
+
         <section class="panel-card owner-section-anchor" id="ownerCustomersSection">
           <div class="section-head">
-            <h2>לקוחות והערות</h2>
-            <p>כאן שומרים הערות פנימיות שרק בעלת העסק רואה, כמו העדפות, רגישויות או מה חשוב לזכור.</p>
+            <h2>לקוחות, היסטוריה והערות</h2>
+            <p>כאן שומרים הערות פנימיות, רואים היסטוריה של ביקורים, ומחליטים אם לחסום לקוחה בעייתית.</p>
           </div>
           <label class="field owner-customer-search-field">
             <span>חיפוש לקוחה</span>
@@ -154,7 +164,7 @@
               <span>שם העסק</span>
               <input type="text" name="name" required>
             </label>
-            <label class="field">
+            <label class="field" data-feature-editor="businessDescription">
               <span>תיאור קצר</span>
               <input type="text" name="description" required>
             </label>
@@ -166,15 +176,72 @@
               <span>טלפון</span>
               <input type="text" name="phone" required>
             </label>
-            <label class="field">
-              <span>קישור לאינסטגרם</span>
-              <input type="url" name="instagramUrl" placeholder="https://instagram.com/your-page">
+            <label class="field" data-feature-editor="socialLink">
+              <span>קישור לרשת חברתית</span>
+              <input type="url" name="instagramUrl" placeholder="https://...">
             </label>
 
-            <label class="field">
+            <label class="field" data-feature-editor="preparationMessage">
               <span>הודעת הכנה לפני תור</span>
               <textarea name="preparationMessage" rows="3" placeholder="למשל: נא להגיע בלי לק קודם, ולהגיע בזמן."></textarea>
             </label>
+
+            <fieldset class="feature-switches">
+              <legend>אפשרויות בונוס באתר</legend>
+              <p>אפשר לכבות כל אפשרות שלא נחוצה כרגע. לאחר השמירה היא תיעלם מהאתר.</p>
+              <div class="feature-switches-grid">
+                <label class="feature-switch">
+                  <input type="checkbox" name="featureBusinessDescription">
+                  <span class="feature-switch-control" aria-hidden="true"></span>
+                  <span class="feature-switch-copy"><strong>תיאור העסק</strong><small>הטקסט שמופיע מתחת לשם העסק</small></span>
+                </label>
+                <label class="feature-switch">
+                  <input type="checkbox" name="featurePreparationMessage">
+                  <span class="feature-switch-control" aria-hidden="true"></span>
+                  <span class="feature-switch-copy"><strong>הודעת הכנה לפני תור</strong><small>הנחיות שמופיעות ללקוחה לאחר ההזמנה</small></span>
+                </label>
+                <label class="feature-switch">
+                  <input type="checkbox" name="featureSocialLink">
+                  <span class="feature-switch-control" aria-hidden="true"></span>
+                  <span class="feature-switch-copy"><strong>רשת חברתית</strong><small>הצגת הקישור החברתי בכרטיס העסק</small></span>
+                </label>
+                <label class="feature-switch">
+                  <input type="checkbox" name="featureWhatsapp">
+                  <span class="feature-switch-control" aria-hidden="true"></span>
+                  <span class="feature-switch-copy"><strong>WhatsApp</strong><small>כפתור לשליחת הודעה לעסק</small></span>
+                </label>
+                <label class="feature-switch">
+                  <input type="checkbox" name="featurePhone">
+                  <span class="feature-switch-control" aria-hidden="true"></span>
+                  <span class="feature-switch-copy"><strong>חיוג טלפוני</strong><small>כפתור להתקשרות לעסק</small></span>
+                </label>
+                <label class="feature-switch">
+                  <input type="checkbox" name="featureWaze">
+                  <span class="feature-switch-control" aria-hidden="true"></span>
+                  <span class="feature-switch-copy"><strong>ניווט ב־Waze</strong><small>כפתור ניווט לכתובת העסק</small></span>
+                </label>
+                <label class="feature-switch">
+                  <input type="checkbox" name="featureCalendarExport">
+                  <span class="feature-switch-control" aria-hidden="true"></span>
+                  <span class="feature-switch-copy"><strong>הוספה ליומן</strong><small>אפשרות לשמור תור ביומן המכשיר</small></span>
+                </label>
+                <label class="feature-switch">
+                  <input type="checkbox" name="featureCustomerRescheduling">
+                  <span class="feature-switch-control" aria-hidden="true"></span>
+                  <span class="feature-switch-copy"><strong>שינוי תור עצמאי</strong><small>הלקוחה יכולה לשלוח בקשת שינוי</small></span>
+                </label>
+                <label class="feature-switch">
+                  <input type="checkbox" name="featureWaitingList">
+                  <span class="feature-switch-control" aria-hidden="true"></span>
+                  <span class="feature-switch-copy"><strong>רשימת המתנה</strong><small>הצטרפות לרשימת המתנה כשאין שעה פנויה</small></span>
+                </label>
+                <label class="feature-switch">
+                  <input type="checkbox" name="featureAttendanceConfirmation">
+                  <span class="feature-switch-control" aria-hidden="true"></span>
+                  <span class="feature-switch-copy"><strong>אישור הגעה</strong><small>שליחת "האם את מגיעה?" ליום שלפני התור</small></span>
+                </label>
+              </div>
+            </fieldset>
 
             <div class="business-media-editor">
               <section class="business-media-card">
@@ -340,6 +407,7 @@
     </div>
   </div>
 
+  <script src="app-ui.js"></script>
   <script src="notifications.js"></script>
   <script src="owner.js"></script>
 </body>
