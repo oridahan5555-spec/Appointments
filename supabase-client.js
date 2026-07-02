@@ -2,6 +2,8 @@
   const config = window.SUPABASE_CONFIG || {};
   const url = String(config.url || "").trim();
   const anonKey = String(config.anonKey || "").trim();
+  const ownerLoginName = String(config.ownerLoginName || "admin").trim() || "admin";
+  const ownerEmail = String(config.ownerEmail || "").trim().toLowerCase();
   const hasLibrary = Boolean(window.supabase?.createClient);
   const isConfigured = Boolean(url && anonKey && hasLibrary);
   const client = isConfigured
@@ -399,8 +401,15 @@
 
   async function signInOwner(credentials) {
     const supabase = ensureClient();
-    const email = String(credentials?.email || credentials?.username || "").trim();
+    const rawIdentifier = String(credentials?.email || credentials?.username || "").trim();
+    const normalizedIdentifier = rawIdentifier.toLowerCase();
+    const email = ownerEmail
+      || (normalizedIdentifier.includes("@") ? normalizedIdentifier : "")
+      || (normalizedIdentifier === ownerLoginName.toLowerCase() ? ownerEmail : "");
     const password = String(credentials?.password || "");
+    if (!email) {
+      throw new Error("חסר ownerEmail ב-supabase-config.js כדי לאפשר התחברות עם admin.");
+    }
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     return data;
@@ -815,5 +824,8 @@
     onAuthStateChange,
     normalizePhone,
     customerEmailFromPhone
+    ,
+    getOwnerLoginName: () => ownerLoginName,
+    getOwnerEmail: () => ownerEmail
   };
 })();

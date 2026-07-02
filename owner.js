@@ -159,8 +159,11 @@ const appUi = window.AppUi || {
   confirm: async () => true
 };
 
+const OWNER_LOGIN_NAME = String(supabaseApi?.getOwnerLoginName?.() || "admin").trim() || "admin";
+
 function loadState() {
   const defaults = structuredClone(DEFAULT_DATA);
+
 
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY) || localStorage.getItem("booking_app_local_working_v1");
@@ -2269,6 +2272,12 @@ function showOwnerLogin() {
   ownerLogoutButton.classList.add("is-hidden");
   ownerLayout.classList.add("is-hidden");
   ownerLoginGate.classList.remove("is-hidden");
+  if (ownerLoginForm?.elements?.username) {
+    ownerLoginForm.elements.username.value = OWNER_LOGIN_NAME;
+  }
+  if (ownerLoginForm?.elements?.password) {
+    ownerLoginForm.elements.password.value = "";
+  }
   notificationCenter?.render();
 }
 
@@ -2283,12 +2292,19 @@ ownerLoginForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (username !== OWNER_LOGIN_NAME) {
+    appUi.toast("ων δξωϊξω μπιδεμ ηιια μδιεϊ admin.", { variant: "error" });
+    return;
+  }
+
   try {
-    await supabaseApi.signInOwner({ email: username, password });
+    await supabaseApi.signInOwner({ username, password });
     const currentUser = await supabaseApi.getCurrentUser();
     ownerSession.authUserId = currentUser?.id || null;
     if (!(await supabaseApi.isOwnerUser())) {
-      throw new Error("Χ”ΧΧ©ΧªΧΧ© Χ”Χ–Χ” Χ§Χ™Χ™Χ Χ‘-Supabase Auth ΧΧ‘Χ ΧΆΧ“Χ™Χ™Χ ΧΧ Χ—Χ•Χ‘Χ¨ ΧΧΧ‘ΧΧª owner_profiles.");
+      await supabaseApi.signOut();
+      ownerSession.authUserId = null;
+      throw new Error("δξωϊξω δζδ χιιν α-Supabase Auth ΰαμ ςγιιο μΰ ηεαψ μθαμϊ owner_profiles.");
     }
     rememberSellerSession();
     sessionStorage.setItem(SELLER_SESSION_KEY, "1");
