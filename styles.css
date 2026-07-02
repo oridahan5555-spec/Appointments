@@ -1020,37 +1020,47 @@ a.ghost-button.is-keyboard-pressed {
 }
 
 .schedule-mode-switch {
-  display: inline-flex;
-  flex-wrap: wrap;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: #fff;
-  box-shadow: var(--shadow);
-  margin-bottom: 16px;
+  padding: 8px;
+  border: 1px solid #e6d7f1;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #ffffff, #faf6fd);
+  box-shadow: 0 16px 34px rgba(50, 40, 78, 0.08);
+  margin-bottom: 18px;
 }
 
 .schedule-mode-button {
-  min-height: 42px;
+  width: 100%;
+  min-height: 48px;
   padding: 0 16px;
   border: 0;
-  border-radius: 999px;
-  background: transparent;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
   color: var(--muted);
   font-weight: 700;
+  font-size: 15px;
   cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(178, 95, 209, 0.08);
 }
 
 .schedule-mode-button.is-active {
   background: linear-gradient(135deg, #f7e9fb, #f2f6ff);
   color: var(--accent-dark);
-  box-shadow: inset 0 0 0 1px rgba(178, 95, 209, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(178, 95, 209, 0.22), 0 10px 22px rgba(178, 95, 209, 0.14);
 }
 
 .schedule-mode-panel {
   display: grid;
   gap: 16px;
+  width: 100%;
+  padding: 18px;
+  border: 1px solid #eadcf3;
+  border-radius: 26px;
+  background: linear-gradient(180deg, #ffffff, #fcf9fe);
+  box-shadow: 0 18px 36px rgba(50, 40, 78, 0.07);
 }
 
 .first-available-list {
@@ -2305,15 +2315,21 @@ a.ghost-button {
 
 @media (max-width: 719px) {
   .schedule-mode-switch {
-    width: 100%;
-    justify-content: space-between;
+    grid-template-columns: 1fr;
+    border-radius: 20px;
+    padding: 8px;
   }
 
   .schedule-mode-button {
-    flex: 1 1 0;
     min-width: 0;
-    padding-inline: 10px;
-    font-size: 13px;
+    min-height: 44px;
+    padding-inline: 12px;
+    font-size: 14px;
+  }
+
+  .schedule-mode-panel {
+    padding: 14px;
+    border-radius: 22px;
   }
 
   .first-available-head {

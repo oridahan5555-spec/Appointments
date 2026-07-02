@@ -1,6 +1,6 @@
 (function () {
   const OWNER_NOTIFICATION_USER_ID = "owner";
-  const OWNER_PERMISSION_PROMPT_KEY = "booking_app_owner_notification_prompted_v1";
+  const NOTIFICATION_PROMPT_KEY_PREFIX = "booking_app_notification_prompted_v2:";
 
   function createNotificationId() {
     if (window.crypto?.randomUUID) {
@@ -258,6 +258,25 @@
       options.save?.();
     }
 
+    async function persistAction(actionName, fallback, ...args) {
+      const action = options[actionName];
+      if (typeof action !== "function") {
+        fallback(...args);
+        return true;
+      }
+
+      try {
+        const result = await action(...args);
+        if (result !== false) {
+          fallback(...args);
+        }
+        return true;
+      } catch (error) {
+        options.onError?.(error);
+        return false;
+      }
+    }
+
     function getCurrentUserNotifications() {
       const currentUserId = getCurrentUserId();
       if (!currentUserId) {
@@ -272,9 +291,21 @@
       bellButton.setAttribute("aria-expanded", String(isOpen));
     }
 
+    function isBrowserNotificationsActiveForCurrentUser() {
+      if (typeof options.isOwnerLoggedIn === "function") {
+        return Boolean(options.isOwnerLoggedIn?.());
+      }
+
+      return Boolean(getCurrentUserId());
+    }
+
+    function getPermissionPromptStorageKey() {
+      return `${NOTIFICATION_PROMPT_KEY_PREFIX}${getCurrentUserId() || OWNER_NOTIFICATION_USER_ID}`;
+    }
+
     function renderPermissionBanner() {
-      const ownerLoggedIn = Boolean(options.isOwnerLoggedIn?.());
-      if (!options.browser || !ownerLoggedIn) {
+      const browserNotificationsActive = isBrowserNotificationsActiveForCurrentUser();
+      if (!options.browser || !browserNotificationsActive) {
         banner.classList.add("is-hidden");
         banner.innerHTML = "";
         return;
@@ -312,11 +343,11 @@
       banner.innerHTML = `
         <div>
           <strong>התראות דפדפן כבויות</strong>
-          <p>אפשר להפעיל התראות כדי שבעל העסק יקבל עדכון גם כשהפאנל סגור.</p>
-        </div>
-        <button class="primary-button small-button" type="button" data-browser-notification-action="request">הפעלת התראות</button>
-      `;
-      banner.classList.remove("is-hidden");
+            <p>אפשר להפעיל התראות כדי לקבל עדכונים גם כשהפאנל סגור.</p>
+          </div>
+          <button class="primary-button small-button" type="button" data-browser-notification-action="request">הפעלת התראות</button>
+        `;
+        banner.classList.remove("is-hidden");
     }
 
     function renderList() {
@@ -377,7 +408,7 @@
       renderPermissionBanner();
     }
 
-    function markAsRead(notificationId) {
+    function applyMarkAsRead(notificationId) {
       const currentUserId = getCurrentUserId();
       const notifications = getAllNotifications().map((notification) => {
         if (notification.id === notificationId && notification.user_id === currentUserId) {
@@ -391,7 +422,11 @@
       render();
     }
 
-    function markAllAsRead() {
+    function markAsRead(notificationId) {
+      return persistAction("onMarkAsRead", applyMarkAsRead, notificationId);
+    }
+
+    function applyMarkAllAsRead() {
       const currentUserId = getCurrentUserId();
       const notifications = getAllNotifications().map((notification) => {
         if (notification.user_id === currentUserId) {
@@ -405,7 +440,11 @@
       render();
     }
 
-    function deleteNotification(notificationId) {
+    function markAllAsRead() {
+      return persistAction("onMarkAllAsRead", applyMarkAllAsRead, getCurrentUserId());
+    }
+
+    function applyDeleteNotification(notificationId) {
       const currentUserId = getCurrentUserId();
       const notifications = getAllNotifications().filter(
         (notification) => !(notification.id === notificationId && notification.user_id === currentUserId)
@@ -413,6 +452,10 @@
 
       setAllNotifications(notifications);
       render();
+    }
+
+    function deleteNotification(notificationId) {
+      return persistAction("onDeleteNotification", applyDeleteNotification, notificationId);
     }
 
     function showBrowserNotification(notification) {
@@ -437,7 +480,7 @@
       }
     }
 
-    function notify(data, config = {}) {
+    async function notify(data, config = {}) {
       const notification = normalizeNotification({
         ...data,
         id: data?.id || createNotificationId(),
@@ -449,20 +492,33 @@
         return null;
       }
 
+      let persistedNotification = notification;
+      if (typeof options.onCreateNotification === "function") {
+        try {
+          const maybeNotification = await options.onCreateNotification(notification, config);
+          if (maybeNotification) {
+            persistedNotification = normalizeNotification(maybeNotification);
+          }
+        } catch (error) {
+          options.onError?.(error);
+          return null;
+        }
+      }
+
       const nextNotifications = [
-        notification,
-        ...getAllNotifications().filter((item) => item.id !== notification.id)
+        persistedNotification,
+        ...getAllNotifications().filter((item) => item.id !== persistedNotification.id)
       ];
 
       setAllNotifications(nextNotifications);
       render();
 
-      if (config.browser !== false && notification.user_id === getCurrentUserId()) {
-        browserSeenIds.add(notification.id);
-        showBrowserNotification(notification);
+      if (config.browser !== false && persistedNotification.user_id === getCurrentUserId()) {
+        browserSeenIds.add(persistedNotification.id);
+        showBrowserNotification(persistedNotification);
       }
 
-      return notification;
+      return persistedNotification;
     }
 
     function rememberCurrentNotifications() {
@@ -483,7 +539,7 @@
     function askAfterOwnerLogin() {
       renderPermissionBanner();
 
-      if (!options.browser || !options.isOwnerLoggedIn?.() || !("Notification" in window)) {
+      if (!options.browser || !isBrowserNotificationsActiveForCurrentUser() || !("Notification" in window)) {
         return;
       }
 
@@ -491,11 +547,12 @@
         return;
       }
 
-      if (localStorage.getItem(OWNER_PERMISSION_PROMPT_KEY) === "1") {
+      const promptStorageKey = getPermissionPromptStorageKey();
+      if (localStorage.getItem(promptStorageKey) === "1") {
         return;
       }
 
-      localStorage.setItem(OWNER_PERMISSION_PROMPT_KEY, "1");
+      localStorage.setItem(promptStorageKey, "1");
       Notification.requestPermission().then(renderPermissionBanner).catch(renderPermissionBanner);
     }
 
@@ -514,17 +571,17 @@
       const notificationId = actionButton.dataset.notificationId;
 
       if (action === "mark-all") {
-        markAllAsRead();
+        void markAllAsRead();
         return;
       }
 
       if (action === "read" && notificationId) {
-        markAsRead(notificationId);
+        void markAsRead(notificationId);
         return;
       }
 
       if (action === "delete" && notificationId) {
-        deleteNotification(notificationId);
+        void deleteNotification(notificationId);
       }
     });
 

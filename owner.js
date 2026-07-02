@@ -3,6 +3,9 @@ const SELLER_SESSION_KEY = "booking_app_seller_session_v1";
 const CUSTOMER_SESSION_KEY = "booking_app_customer_session_v1";
 const REJECT_UNDO_WINDOW_MS = 5000;
 const ARRIVAL_STATUS_OPTIONS = ["waiting", "arrived", "finished", "no_show"];
+const supabaseApi = window.AppSupabase || null;
+const supabaseEnabled = Boolean(supabaseApi?.isConfigured?.());
+const OWNER_SUPABASE_BOOTSTRAP_KEY = "booking_app_owner_supabase_bootstrap_v1";
 const BUSINESS_FEATURE_FIELDS = {
   businessDescription: "featureBusinessDescription",
   preparationMessage: "featurePreparationMessage",
@@ -90,6 +93,10 @@ const uiState = {
   rejectUndoTimeoutId: null
 };
 
+const ownerSession = {
+  authUserId: null
+};
+
 const ownerBrandName = document.getElementById("ownerBrandName");
 const ownerBrandDescription = document.getElementById("ownerBrandDescription");
 const ownerLoginGate = document.getElementById("ownerLoginGate");
@@ -139,6 +146,11 @@ const notificationCenter = window.AppNotifications?.create({
   save: saveState,
   getUserId: getCurrentNotificationUserId,
   isOwnerLoggedIn: isOwnerNotificationActive,
+  onMarkAsRead: (notificationId) => supabaseEnabled ? supabaseApi.markNotificationRead(notificationId) : true,
+  onMarkAllAsRead: (userId) => supabaseEnabled ? supabaseApi.markAllNotificationsRead(userId) : true,
+  onDeleteNotification: (notificationId) => supabaseEnabled ? supabaseApi.deleteNotification(notificationId) : true,
+  onCreateNotification: (notification) => supabaseEnabled ? supabaseApi.createNotification(notification) : notification,
+  onError: (error) => appUi.toast(error?.message || "לא הצלחנו לעדכן את ההתראה.", { variant: "error" }),
   browser: true
 });
 
@@ -202,6 +214,79 @@ function saveState() {
       customerNotes: state.customerNotes
     })
   );
+
+  if (supabaseEnabled && isOwnerNotificationActive() && !isHydratingOwnerState) {
+    void supabaseApi.syncOwnerState(state).catch((error) => {
+      appUi.toast(error?.message || "לא הצלחנו לשמור את השינויים ב-Supabase.", { variant: "error" });
+    });
+  }
+}
+
+let ownerRealtimeCleanups = [];
+let isHydratingOwnerState = false;
+
+function clearOwnerRealtimeSubscriptions() {
+  ownerRealtimeCleanups.forEach((cleanup) => {
+    try {
+      cleanup?.();
+    } catch (error) {
+      console.warn(error);
+    }
+  });
+  ownerRealtimeCleanups = [];
+}
+
+async function refreshOwnerStateFromSupabase() {
+  if (!supabaseEnabled) {
+    return;
+  }
+
+  isHydratingOwnerState = true;
+  try {
+    const ownerState = await supabaseApi.loadOwnerState();
+    if (ownerState.business) {
+      state.business = normalizeBusiness(ownerState.business);
+    }
+    state.services = ownerState.services?.length ? ownerState.services : state.services;
+    state.workingHours = ownerState.workingHours?.length ? ownerState.workingHours : state.workingHours;
+    state.specialHours = normalizeSpecialHours(ownerState.specialHours || []);
+    state.blockedSlots = normalizeBlockedSlots(ownerState.blockedSlots || []);
+    state.waitlistEntries = normalizeWaitlistEntries(ownerState.waitlistEntries || []);
+    state.users = normalizeUsers(ownerState.users || []);
+    state.notifications = normalizeNotifications(ownerState.notifications || []);
+    state.bookings = normalizeBookings(ownerState.bookings || [], state.staff, state.services);
+    saveState();
+    rerenderAll();
+    notificationCenter?.showNewBrowserNotifications();
+  } finally {
+    isHydratingOwnerState = false;
+  }
+}
+
+function setupOwnerRealtimeSubscriptions() {
+  if (!supabaseEnabled || !ownerSession.authUserId) {
+    return;
+  }
+
+  clearOwnerRealtimeSubscriptions();
+  ["business", "services", "working_hours", "special_hours", "blocked_slots", "bookings", "customers", "notifications", "waitlist_entries"].forEach((table) => {
+    ownerRealtimeCleanups.push(supabaseApi.subscribe(table, () => {
+      void refreshOwnerStateFromSupabase();
+    }));
+  });
+}
+
+async function ensureOwnerSupabaseBootstrap() {
+  if (!supabaseEnabled || localStorage.getItem(OWNER_SUPABASE_BOOTSTRAP_KEY) === "1") {
+    return;
+  }
+
+  try {
+    await supabaseApi.syncOwnerState(state);
+    localStorage.setItem(OWNER_SUPABASE_BOOTSTRAP_KEY, "1");
+  } catch (error) {
+    console.warn(error);
+  }
 }
 
 function rememberSellerSession() {
@@ -291,6 +376,8 @@ function normalizeUsers(users) {
 
   return users
     .map((user) => ({
+      id: String(user?.id || ""),
+      auth_user_id: String(user?.auth_user_id || ""),
       firstName: String(user?.firstName || "").trim(),
       lastName: String(user?.lastName || "").trim(),
       phone: String(user?.phone || "").trim(),
@@ -515,6 +602,11 @@ function isSamePhone(left, right) {
 }
 
 function getCustomerNotificationUserId(phone) {
+  const matchedUser = state.users.find((user) => isSamePhone(user.phone, phone) && user.auth_user_id);
+  if (matchedUser?.auth_user_id) {
+    return matchedUser.auth_user_id;
+  }
+
   const normalizedPhone = normalizePhoneNumber(phone);
   return normalizedPhone ? `customer:${normalizedPhone}` : "";
 }
@@ -528,7 +620,7 @@ function isOwnerNotificationActive() {
 }
 
 function getCurrentNotificationUserId() {
-  return isOwnerNotificationActive() ? "owner" : "";
+  return isOwnerNotificationActive() ? ownerSession.authUserId || "" : "";
 }
 
 function getBookingCustomerName(booking) {
@@ -541,6 +633,10 @@ function getBookingDateTimeText(booking) {
   }
 
   return `${formatDisplayDate(booking.booking_date)} בשעה ${String(booking.booking_time || "").slice(0, 5)}`;
+}
+
+function getOwnerNotificationTargetId() {
+  return ownerSession.authUserId || "owner";
 }
 
 function pushAppNotification(userId, title, message, type, config = {}) {
@@ -561,7 +657,7 @@ function pushAppNotification(userId, title, message, type, config = {}) {
 
 function notifyOwnerAppointmentCancelled(booking, actorText = "בעל העסק") {
   pushAppNotification(
-    "owner",
+    getOwnerNotificationTargetId(),
     "תור בוטל",
     `${actorText} ביטל את התור של ${getBookingCustomerName(booking)} ל${booking.service_name} בתאריך ${getBookingDateTimeText(booking)}.`,
     "appointment_cancelled"
@@ -571,7 +667,7 @@ function notifyOwnerAppointmentCancelled(booking, actorText = "בעל העסק")
 function notifyOwnerAppointmentRescheduled(booking, previousBooking = null) {
   const previousText = previousBooking ? ` במקום ${getBookingDateTimeText(previousBooking)}` : "";
   pushAppNotification(
-    "owner",
+    getOwnerNotificationTargetId(),
     "תור הוזז",
     `התור של ${getBookingCustomerName(booking)} עודכן ל${getBookingDateTimeText(booking)}${previousText}.`,
     "appointment_rescheduled"
@@ -580,7 +676,7 @@ function notifyOwnerAppointmentRescheduled(booking, previousBooking = null) {
 
 function notifyOwnerAppointmentUpdated(booking, updateText) {
   pushAppNotification(
-    "owner",
+    getOwnerNotificationTargetId(),
     "תור עודכן",
     `${updateText}: ${getBookingCustomerName(booking)}, ${booking.service_name}, ${getBookingDateTimeText(booking)}.`,
     "appointment_updated"
@@ -2176,31 +2272,44 @@ function showOwnerLogin() {
   notificationCenter?.render();
 }
 
-ownerLoginForm.addEventListener("submit", (event) => {
+ownerLoginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(ownerLoginForm);
   const username = String(formData.get("username")).trim();
   const password = String(formData.get("password"));
 
-  if (username !== state.sellerCredentials.username) {
-    appUi.toast("שם המשתמש לא טוב.", { variant: "error" });
+  if (!supabaseEnabled) {
+    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
     return;
   }
 
-  if (password !== state.sellerCredentials.password) {
-    appUi.toast("הסיסמה לא טובה.", { variant: "error" });
-    return;
+  try {
+    await supabaseApi.signInOwner({ email: username, password });
+    const currentUser = await supabaseApi.getCurrentUser();
+    ownerSession.authUserId = currentUser?.id || null;
+    if (!(await supabaseApi.isOwnerUser())) {
+      throw new Error("המשתמש הזה קיים ב-Supabase Auth אבל עדיין לא חובר לטבלת owner_profiles.");
+    }
+    rememberSellerSession();
+    sessionStorage.setItem(SELLER_SESSION_KEY, "1");
+    await ensureOwnerSupabaseBootstrap();
+    await refreshOwnerStateFromSupabase();
+    setupOwnerRealtimeSubscriptions();
+    showOwnerLayout();
+  } catch (error) {
+    appUi.toast(error?.message || "פרטי הכניסה לא תקינים.", { variant: "error" });
   }
-
-  rememberSellerSession();
-  sessionStorage.setItem(SELLER_SESSION_KEY, "1");
-  showOwnerLayout();
 });
 
-ownerLogoutButton.addEventListener("click", () => {
+ownerLogoutButton.addEventListener("click", async () => {
   clearRejectUndo(false);
   closeCalendarChoice();
   clearRememberedSellerSession();
+  if (supabaseEnabled) {
+    await supabaseApi.signOut();
+  }
+  ownerSession.authUserId = null;
+  clearOwnerRealtimeSubscriptions();
   window.location.href = "index.html";
 });
 
@@ -2765,7 +2874,7 @@ businessForm.addEventListener("submit", async (event) => {
   rerenderAll();
 });
 
-sellerCredentialsForm.addEventListener("submit", (event) => {
+sellerCredentialsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const username = String(sellerCredentialsForm.elements.username.value).trim();
   const password = String(sellerCredentialsForm.elements.password.value);
@@ -2775,19 +2884,26 @@ sellerCredentialsForm.addEventListener("submit", (event) => {
     return;
   }
 
-  state.sellerCredentials.username = username;
-  if (password.trim()) {
-    state.sellerCredentials.password = password;
+  try {
+    if (supabaseEnabled && ownerSession.authUserId) {
+      await supabaseApi.updateOwnerCredentials({
+        email: username,
+        password
+      });
+    }
+    state.sellerCredentials.username = username;
+    sellerCredentialsForm.elements.password.value = "";
+    saveState();
+    rerenderAll();
+    appUi.toast("פרטי ההתחברות נשמרו ב-Supabase Auth.", { variant: "success" });
+  } catch (error) {
+    appUi.toast(error?.message || "לא הצלחנו לעדכן את פרטי ההתחברות.", { variant: "error" });
   }
-
-  saveState();
-  sellerCredentialsForm.elements.password.value = "";
-  rerenderAll();
 });
 
 addServiceButton.addEventListener("click", () => {
   state.services.push({
-    id: `service-${Date.now()}`,
+    id: window.crypto?.randomUUID ? window.crypto.randomUUID() : `service-${Date.now()}`,
     category: "קטגוריה ראשית",
     name: "שירות חדש",
     price: 0,
@@ -2877,10 +2993,46 @@ window.addEventListener("storage", (event) => {
   }
 });
 
-if (isSellerRemembered()) {
+async function initializeOwnerPage() {
+  showOwnerLogin();
+
+  if (!supabaseEnabled) {
+    if (isSellerRemembered()) {
+      showOwnerLayout();
+    }
+    return;
+  }
+
+  const currentUser = await supabaseApi.getCurrentUser();
+  if (!currentUser) {
+    return;
+  }
+
+  ownerSession.authUserId = currentUser.id;
+  if (!(await supabaseApi.isOwnerUser())) {
+    return;
+  }
+
   rememberSellerSession();
   sessionStorage.setItem(SELLER_SESSION_KEY, "1");
+  await ensureOwnerSupabaseBootstrap();
+  await refreshOwnerStateFromSupabase();
+  setupOwnerRealtimeSubscriptions();
   showOwnerLayout();
-} else {
-  showOwnerLogin();
+
+  supabaseApi.onAuthStateChange(async (session) => {
+    if (!session?.user) {
+      ownerSession.authUserId = null;
+      clearOwnerRealtimeSubscriptions();
+      showOwnerLogin();
+      return;
+    }
+
+    ownerSession.authUserId = session.user.id;
+    await refreshOwnerStateFromSupabase();
+    setupOwnerRealtimeSubscriptions();
+    showOwnerLayout();
+  });
 }
+
+void initializeOwnerPage();

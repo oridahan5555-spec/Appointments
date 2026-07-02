@@ -3,6 +3,8 @@ const SELLER_SESSION_KEY = "booking_app_seller_session_v1";
 const CUSTOMER_SESSION_KEY = "booking_app_customer_session_v1";
 const REJECT_UNDO_WINDOW_MS = 5000;
 const ARRIVAL_STATUS_OPTIONS = ["waiting", "arrived", "finished", "no_show"];
+const supabaseApi = window.AppSupabase || null;
+const supabaseEnabled = Boolean(supabaseApi?.isConfigured?.());
 const DEFAULT_OWNER_STAFF = {
   id: "staff-owner",
   name: "בעלת העסק",
@@ -91,7 +93,8 @@ const uiState = {
 
 const session = {
   role: null,
-  customerPhone: null
+  customerPhone: null,
+  authUserId: null
 };
 
 const brandName = document.getElementById("brandName");
@@ -192,7 +195,13 @@ const notificationCenter = window.AppNotifications?.create({
     state.notifications = normalizeNotifications(notifications);
   },
   save: saveState,
-  getUserId: getCurrentNotificationUserId
+  getUserId: getCurrentNotificationUserId,
+  onMarkAsRead: (notificationId) => supabaseEnabled ? supabaseApi.markNotificationRead(notificationId) : true,
+  onMarkAllAsRead: (userId) => supabaseEnabled ? supabaseApi.markAllNotificationsRead(userId) : true,
+  onDeleteNotification: (notificationId) => supabaseEnabled ? supabaseApi.deleteNotification(notificationId) : true,
+  onCreateNotification: (notification) => supabaseEnabled ? supabaseApi.createNotification(notification) : notification,
+  onError: (error) => appUi.toast(error?.message || "לא הצלחנו לעדכן את ההתראה.", { variant: "error" }),
+  browser: true
 });
 
 const appUi = window.AppUi || {
@@ -237,6 +246,20 @@ function loadState() {
 }
 
 function saveState() {
+  const currentCustomerPhone = normalizePhoneNumber(session.customerPhone);
+  const savedUsers = currentCustomerPhone
+    ? state.users.filter((user) => isSamePhone(user.phone, currentCustomerPhone))
+    : [];
+  const savedBookings = currentCustomerPhone
+    ? state.bookings.filter((booking) => isSamePhone(booking.customer_phone, currentCustomerPhone))
+    : [];
+  const savedNotifications = currentCustomerPhone
+    ? state.notifications.filter((notification) => String(notification.user_id || "") === String(session.authUserId || getCurrentNotificationUserId()))
+    : [];
+  const savedWaitlistEntries = currentCustomerPhone
+    ? state.waitlistEntries.filter((entry) => isSamePhone(entry.customer_phone, currentCustomerPhone))
+    : [];
+
   localStorage.setItem(
     LOCAL_STORAGE_KEY,
     JSON.stringify({
@@ -247,13 +270,137 @@ function saveState() {
       workingHours: state.workingHours,
       specialHours: state.specialHours,
       blockedSlots: state.blockedSlots,
-      waitlistEntries: state.waitlistEntries,
-      bookings: state.bookings,
-      notifications: state.notifications,
-      users: state.users,
+      waitlistEntries: savedWaitlistEntries,
+      bookings: savedBookings,
+      notifications: savedNotifications,
+      users: savedUsers,
       customerNotes: state.customerNotes
     })
   );
+}
+
+let publicRealtimeCleanups = [];
+let personalRealtimeCleanups = [];
+
+function clearRealtimeSubscriptions(collection) {
+  collection.forEach((cleanup) => {
+    try {
+      cleanup?.();
+    } catch (error) {
+      console.warn(error);
+    }
+  });
+  collection.length = 0;
+}
+
+async function syncSessionFromSupabase() {
+  if (!supabaseEnabled) {
+    return;
+  }
+
+  const user = await supabaseApi.getCurrentUser();
+  if (!user) {
+    session.role = null;
+    session.customerPhone = null;
+    session.authUserId = null;
+    return;
+  }
+
+  session.authUserId = user.id;
+  if (await supabaseApi.isOwnerUser()) {
+    session.role = "seller";
+    return;
+  }
+
+  session.role = "customer";
+}
+
+function mergePublicState(publicState) {
+  if (publicState.business) {
+    state.business = normalizeBusiness(publicState.business);
+  }
+
+  state.services = Array.isArray(publicState.services) && publicState.services.length ? publicState.services : state.services;
+  state.workingHours = Array.isArray(publicState.workingHours) && publicState.workingHours.length ? publicState.workingHours : state.workingHours;
+  state.specialHours = normalizeSpecialHours(publicState.specialHours);
+  state.blockedSlots = normalizeBlockedSlots(publicState.blockedSlots);
+  state.bookings = normalizeBookings(publicState.bookings || [], state.staff, state.services);
+}
+
+function mergeCustomerState(customerState) {
+  const ownBookings = normalizeBookings(customerState.bookings || [], state.staff, state.services);
+  const bookingMap = new Map(ownBookings.map((booking) => [booking.id, booking]));
+  state.bookings.forEach((booking) => {
+    if (!bookingMap.has(booking.id)) {
+      bookingMap.set(booking.id, booking);
+    }
+  });
+  state.bookings = [...bookingMap.values()];
+
+  if (customerState.customer) {
+    session.customerPhone = normalizePhoneNumber(customerState.customer.phone);
+    const otherUsers = state.users.filter((user) => !isSamePhone(user.phone, customerState.customer.phone));
+    state.users = normalizeUsers([customerState.customer, ...otherUsers]);
+  }
+
+  state.notifications = normalizeNotifications(customerState.notifications || []);
+  state.waitlistEntries = normalizeWaitlistEntries(customerState.waitlistEntries || []);
+}
+
+async function refreshStateFromSupabase() {
+  if (!supabaseEnabled) {
+    return;
+  }
+
+  await syncSessionFromSupabase();
+  const publicState = await supabaseApi.loadPublicState();
+  mergePublicState(publicState);
+
+  if (session.role === "customer") {
+    const customerState = await supabaseApi.loadCustomerState();
+    mergeCustomerState(customerState);
+  } else {
+    state.notifications = [];
+    state.waitlistEntries = [];
+  }
+
+  saveState();
+  rerenderAll();
+  notificationCenter?.showNewBrowserNotifications();
+}
+
+function setupPublicRealtimeSubscriptions() {
+  if (!supabaseEnabled) {
+    return;
+  }
+
+  clearRealtimeSubscriptions(publicRealtimeCleanups);
+  ["business", "services", "working_hours", "special_hours", "blocked_slots", "bookings"].forEach((table) => {
+    publicRealtimeCleanups.push(supabaseApi.subscribe(table, () => {
+      void refreshStateFromSupabase();
+    }));
+  });
+}
+
+function setupPersonalRealtimeSubscriptions() {
+  if (!supabaseEnabled) {
+    return;
+  }
+
+  clearRealtimeSubscriptions(personalRealtimeCleanups);
+  if (!session.authUserId) {
+    return;
+  }
+
+  personalRealtimeCleanups.push(supabaseApi.subscribe("bookings", () => {
+    void refreshStateFromSupabase();
+  }, `customer_auth_user_id=eq.${session.authUserId}`));
+  personalRealtimeCleanups.push(supabaseApi.subscribe("notifications", () => {
+    void refreshStateFromSupabase();
+  }, `user_id=eq.${session.authUserId}`));
+  personalRealtimeCleanups.push(supabaseApi.subscribe("waitlist_entries", () => {
+    void refreshStateFromSupabase();
+  }, `customer_auth_user_id=eq.${session.authUserId}`));
 }
 
 function rememberCustomerSession(phone) {
@@ -350,6 +497,8 @@ function normalizeUsers(users) {
 
   return users
     .map((user) => ({
+      id: String(user?.id || ""),
+      auth_user_id: String(user?.auth_user_id || ""),
       firstName: String(user?.firstName || "").trim(),
       lastName: String(user?.lastName || "").trim(),
       phone: String(user?.phone || "").trim(),
@@ -567,6 +716,11 @@ function isSamePhone(left, right) {
 }
 
 function getCustomerNotificationUserId(phone) {
+  const matchedUser = state.users.find((user) => isSamePhone(user.phone, phone) && user.auth_user_id);
+  if (matchedUser?.auth_user_id) {
+    return matchedUser.auth_user_id;
+  }
+
   const normalizedPhone = normalizePhoneNumber(phone);
   return normalizedPhone ? `customer:${normalizedPhone}` : "";
 }
@@ -576,12 +730,12 @@ function getBookingCustomerNotificationUserId(booking) {
 }
 
 function getCurrentNotificationUserId() {
-  if (session.role === "seller" || isSellerRemembered()) {
-    return "owner";
+  if (session.role === "seller" && session.authUserId) {
+    return session.authUserId;
   }
 
-  if (session.role === "customer") {
-    return getCustomerNotificationUserId(session.customerPhone);
+  if (session.role === "customer" && session.authUserId) {
+    return session.authUserId;
   }
 
   return "";
@@ -589,6 +743,10 @@ function getCurrentNotificationUserId() {
 
 function getBookingCustomerName(booking) {
   return [booking?.customer_first_name, booking?.customer_last_name].filter(Boolean).join(" ").trim() || "לקוחה";
+}
+
+function getOwnerNotificationTargetId() {
+  return session.authUserId || "owner";
 }
 
 function getBookingDateTimeText(booking) {
@@ -617,7 +775,7 @@ function pushAppNotification(userId, title, message, type, config = {}) {
 
 function notifyOwnerAppointmentBooked(booking) {
   pushAppNotification(
-    "owner",
+    getOwnerNotificationTargetId(),
     "נקבע תור חדש",
     `${getBookingCustomerName(booking)} קבעה תור ל${booking.service_name} בתאריך ${getBookingDateTimeText(booking)}.`,
     "appointment_booked"
@@ -626,7 +784,7 @@ function notifyOwnerAppointmentBooked(booking) {
 
 function notifyOwnerAppointmentCancelled(booking, actorText = "הלקוחה") {
   pushAppNotification(
-    "owner",
+    getOwnerNotificationTargetId(),
     "תור בוטל",
     `${actorText} ביטלה את התור של ${getBookingCustomerName(booking)} ל${booking.service_name} בתאריך ${getBookingDateTimeText(booking)}.`,
     "appointment_cancelled"
@@ -636,7 +794,7 @@ function notifyOwnerAppointmentCancelled(booking, actorText = "הלקוחה") {
 function notifyOwnerAppointmentRescheduled(booking, previousBooking = null) {
   const previousText = previousBooking ? ` במקום ${getBookingDateTimeText(previousBooking)}` : "";
   pushAppNotification(
-    "owner",
+    getOwnerNotificationTargetId(),
     "בקשת שינוי תור",
     `${getBookingCustomerName(booking)} ביקשה להעביר את התור ל${getBookingDateTimeText(booking)}${previousText}.`,
     "appointment_rescheduled"
@@ -645,7 +803,7 @@ function notifyOwnerAppointmentRescheduled(booking, previousBooking = null) {
 
 function notifyOwnerAppointmentUpdated(booking, updateText) {
   pushAppNotification(
-    "owner",
+    getOwnerNotificationTargetId(),
     "תור עודכן",
     `${updateText}: ${getBookingCustomerName(booking)}, ${booking.service_name}, ${getBookingDateTimeText(booking)}.`,
     "appointment_updated"
@@ -1617,22 +1775,42 @@ function joinWaitlistForCurrentSelection() {
     return;
   }
 
-  state.waitlistEntries.push({
-    id: `waitlist-${Date.now()}`,
+  const createEntryLocally = () => {
+    state.waitlistEntries.push({
+      id: `waitlist-${Date.now()}`,
       customer_phone: currentCustomer?.phone || session.customerPhone || "",
       customer_name: buildCustomerFullName(currentCustomer?.firstName, currentCustomer?.lastName) || "לקוחה",
+      customer_auth_user_id: session.authUserId || "",
       service_id: serviceBundle.primaryServiceId,
       service_name: serviceBundle.primaryServiceName,
-    booking_date: uiState.selectedDate,
-    notes: uiState.bookingDraft.notes || "",
-    status: "waiting",
-    created_at: new Date().toISOString(),
-    notified_at: ""
+      booking_date: uiState.selectedDate,
+      notes: uiState.bookingDraft.notes || "",
+      status: "waiting",
+      created_at: new Date().toISOString(),
+      notified_at: ""
+    });
+    state.waitlistEntries = normalizeWaitlistEntries(state.waitlistEntries);
+    saveState();
+    rerenderAll();
+  };
+
+  if (!supabaseEnabled) {
+    createEntryLocally();
+    appUi.toast("נרשמת לרשימת ההמתנה. אם יתפנה מקום תקבלי התראה.", { variant: "success" });
+    return;
+  }
+
+  supabaseApi.joinWaitlist({
+    serviceId: serviceBundle.primaryServiceId,
+    serviceName: serviceBundle.primaryServiceName,
+    bookingDate: uiState.selectedDate,
+    notes: uiState.bookingDraft.notes || ""
+  }).then(async () => {
+    await refreshStateFromSupabase();
+    appUi.toast("נרשמת לרשימת ההמתנה. אם יתפנה מקום תקבלי התראה.", { variant: "success" });
+  }).catch((error) => {
+    appUi.toast(error?.message || "לא הצלחנו להצטרף לרשימת ההמתנה.", { variant: "error" });
   });
-  state.waitlistEntries = normalizeWaitlistEntries(state.waitlistEntries);
-  saveState();
-  rerenderAll();
-  appUi.toast("נרשמת לרשימת ההמתנה. אם יתפנה מקום תקבלי התראה.", { variant: "success" });
 }
 
 function shouldOfferAttendanceConfirmation(booking) {
@@ -2292,7 +2470,7 @@ function renderEditors() {
 
 function updateSessionUi() {
   const customerLoggedIn = session.role === "customer";
-  const sellerLoggedIn = session.role === "seller" || isSellerRemembered();
+  const sellerLoggedIn = session.role === "seller";
   const customerUiVisible = customerLoggedIn && !sellerLoggedIn;
 
   logoutButton.classList.toggle("is-hidden", !customerUiVisible);
@@ -2404,6 +2582,7 @@ function updateCurrentCustomer(fullName, phone) {
   const nameParts = parseFullName(fullName);
   if (!customer) {
     state.users.push({
+      auth_user_id: session.authUserId || "",
       firstName: nameParts.firstName,
       lastName: nameParts.lastName,
       phone,
@@ -2416,6 +2595,7 @@ function updateCurrentCustomer(fullName, phone) {
       created_at: new Date().toISOString()
     });
   } else {
+    customer.auth_user_id = customer.auth_user_id || session.authUserId || "";
     customer.firstName = nameParts.firstName;
     customer.lastName = nameParts.lastName;
     customer.phone = phone;
@@ -2461,32 +2641,34 @@ function resetBookingSelection() {
 
 openCustomerLogin.addEventListener("click", () => openAuthModal("customer"));
 openSellerLogin.addEventListener("click", () => {
-  if (isSellerRemembered()) {
-    rememberSellerSession();
-    sessionStorage.setItem(SELLER_SESSION_KEY, "1");
-    window.location.href = "owner.html";
-    return;
-  }
-
   openAuthModal("seller");
 });
 closeModal.addEventListener("click", closeAuthModal);
 
-logoutButton.addEventListener("click", () => {
+logoutButton.addEventListener("click", async () => {
   clearRejectUndo(false);
   clearReplacementBooking();
   closeCalendarChoice();
   clearRememberedCustomerSession();
+  if (supabaseEnabled) {
+    await supabaseApi.signOut();
+  }
   session.role = null;
   session.customerPhone = null;
+  session.authUserId = null;
   uiState.customerBookingsView = "active";
   uiState.bookingDraft = { fullName: "", phone: "", notes: "" };
   bookingForm.reset();
   rerenderAll();
 });
 
-sellerSiteLogoutButton.addEventListener("click", () => {
+sellerSiteLogoutButton.addEventListener("click", async () => {
   clearRememberedSellerSession();
+  if (supabaseEnabled) {
+    await supabaseApi.signOut();
+  }
+  session.role = null;
+  session.authUserId = null;
   rerenderAll();
 });
 
@@ -2681,7 +2863,7 @@ bookingForm.addEventListener("input", (event) => {
   }
 });
 
-customerLoginForm.addEventListener("submit", (event) => {
+customerLoginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(customerLoginForm);
   const password = String(formData.get("password"));
@@ -2695,64 +2877,57 @@ customerLoginForm.addEventListener("submit", (event) => {
     return;
   }
 
-  const existingUser = state.users.find((user) => isSamePhone(user.phone, normalizedPhone));
-  if (existingUser) {
-    if (existingUser.password !== password) {
-      appUi.toast("הסיסמה לא טובה.", { variant: "error" });
-      return;
-    }
-    existingUser.firstName = firstName || existingUser.firstName;
-    existingUser.lastName = lastName || existingUser.lastName;
-    existingUser.phone = phone || existingUser.phone;
-  } else {
-    state.users.push({
+  if (!supabaseEnabled) {
+    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
+    return;
+  }
+
+  try {
+    await supabaseApi.signInOrRegisterCustomer({
       firstName,
       lastName,
       phone,
-      password,
-      owner_note: "",
-      is_blocked: false,
-      blocked_reason: "",
-      blocked_at: "",
-      no_show_count: 0,
-      created_at: new Date().toISOString()
+      password
     });
-  }
-
-  session.role = "customer";
-  session.customerPhone = normalizedPhone;
-  uiState.customerBookingsView = "active";
-  uiState.bookingDraft.fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
-  uiState.bookingDraft.phone = phone;
-  rememberCustomerSession(normalizedPhone);
-  notificationCenter?.rememberCurrentNotifications();
-  saveState();
-  closeAuthModal();
-  rerenderAll();
-  if (isCustomerBlocked(normalizedPhone)) {
-    appUi.toast("התחברת, אבל החשבון חסום כרגע לקביעת תורים חדשים.", { variant: "warning" });
+    session.role = "customer";
+    session.customerPhone = normalizedPhone;
+    session.authUserId = (await supabaseApi.getCurrentUser())?.id || null;
+    uiState.customerBookingsView = "active";
+    uiState.bookingDraft.fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+    uiState.bookingDraft.phone = phone;
+    rememberCustomerSession(normalizedPhone);
+    closeAuthModal();
+    await refreshStateFromSupabase();
+    setupPersonalRealtimeSubscriptions();
+    notificationCenter?.rememberCurrentNotifications();
+    notificationCenter?.askAfterOwnerLogin();
+    if (isCustomerBlocked(normalizedPhone)) {
+      appUi.toast("התחברת, אבל החשבון חסום כרגע לקביעת תורים חדשים.", { variant: "warning" });
+    }
+  } catch (error) {
+    appUi.toast(error?.message || "לא הצלחנו להתחבר.", { variant: "error" });
   }
 });
 
-sellerLoginForm.addEventListener("submit", (event) => {
+sellerLoginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(sellerLoginForm);
   const username = String(formData.get("username")).trim();
   const password = String(formData.get("password"));
 
-  if (username !== state.sellerCredentials.username) {
-    appUi.toast("שם המשתמש לא טוב.", { variant: "error" });
+  if (!supabaseEnabled) {
+    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
     return;
   }
 
-  if (password !== state.sellerCredentials.password) {
-    appUi.toast("הסיסמה לא טובה.", { variant: "error" });
-    return;
+  try {
+    await supabaseApi.signInOwner({ email: username, password });
+    rememberSellerSession();
+    sessionStorage.setItem(SELLER_SESSION_KEY, "1");
+    window.location.href = "owner.html";
+  } catch (error) {
+    appUi.toast(error?.message || "פרטי הכניסה לא תקינים.", { variant: "error" });
   }
-
-  rememberSellerSession();
-  sessionStorage.setItem(SELLER_SESSION_KEY, "1");
-  window.location.href = "owner.html";
 });
 
 bookingForm.addEventListener("submit", async (event) => {
@@ -2801,37 +2976,23 @@ bookingForm.addEventListener("submit", async (event) => {
 
     updateCurrentCustomer(fullName, phone);
 
-    const nameParts = parseFullName(fullName);
     const replacedBookingId = uiState.replacementBookingId;
     const sourceBooking = replacedBookingId ? findBookingById(replacedBookingId) : null;
-    const newBooking = {
-      id: `booking-${Date.now()}`,
-      service_id: serviceBundle.primaryServiceId,
-      service_ids: serviceBundle.ids,
-      service_name: serviceBundle.name,
-      service_names: serviceBundle.names,
-      staff_id: assignedStaff.id,
-      staff_name: assignedStaff.name,
-      customer_first_name: nameParts.firstName,
-      customer_last_name: nameParts.lastName,
-      customer_phone: phone,
-      notes,
-      booking_date: uiState.selectedDate,
-      booking_time: uiState.selectedTime,
-      duration_minutes: serviceBundle.duration,
-      status: "pending",
-      replaces_booking_id: replacedBookingId || null,
-      attendance_confirmation_requested_at: "",
-      attendance_confirmation_status: "",
-      attendance_confirmation_answered_at: ""
-    };
+    const nameParts = parseFullName(fullName);
+    const created = supabaseEnabled
+      ? await supabaseApi.createBooking({
+        serviceId: serviceBundle.primaryServiceId,
+        serviceIds: serviceBundle.ids,
+        firstName: nameParts.firstName,
+        lastName: nameParts.lastName,
+        phone,
+        notes,
+        bookingDate: uiState.selectedDate,
+        bookingTime: uiState.selectedTime,
+        replacesBookingId: replacedBookingId || null
+      })
+      : null;
 
-    state.bookings.push(newBooking);
-    if (sourceBooking) {
-      notifyOwnerAppointmentRescheduled(newBooking, sourceBooking);
-    } else {
-      notifyOwnerAppointmentBooked(newBooking);
-    }
     uiState.bookingDraft = {
       fullName: "",
       phone: "",
@@ -2839,9 +3000,12 @@ bookingForm.addEventListener("submit", async (event) => {
     };
     clearReplacementBooking();
     saveState();
-    rerenderAll();
+    await refreshStateFromSupabase();
     showWizardStep(4);
-    showBookingSuccess(newBooking);
+    const newBooking = state.bookings.find((booking) => booking.id === created?.booking_id) || sourceBooking;
+    if (newBooking) {
+      showBookingSuccess(newBooking);
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   } finally {
     uiState.isBookingSubmitting = false;
@@ -2863,7 +3027,7 @@ businessForm.addEventListener("submit", (event) => {
   rerenderAll();
 });
 
-sellerCredentialsForm.addEventListener("submit", (event) => {
+sellerCredentialsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const username = String(sellerCredentialsForm.elements.username.value).trim();
   const password = String(sellerCredentialsForm.elements.password.value);
@@ -2873,19 +3037,26 @@ sellerCredentialsForm.addEventListener("submit", (event) => {
     return;
   }
 
-  state.sellerCredentials.username = username;
-  if (password.trim()) {
-    state.sellerCredentials.password = password;
+  try {
+    if (supabaseEnabled && session.role === "seller") {
+      await supabaseApi.updateOwnerCredentials({
+        email: username,
+        password
+      });
+    }
+    state.sellerCredentials.username = username;
+    sellerCredentialsForm.elements.password.value = "";
+    saveState();
+    rerenderAll();
+    appUi.toast("פרטי ההתחברות נשמרו ב-Supabase Auth.", { variant: "success" });
+  } catch (error) {
+    appUi.toast(error?.message || "לא הצלחנו לעדכן את פרטי ההתחברות.", { variant: "error" });
   }
-
-  saveState();
-  sellerCredentialsForm.elements.password.value = "";
-  rerenderAll();
 });
 
 addServiceButton.addEventListener("click", () => {
   state.services.push({
-    id: `service-${Date.now()}`,
+    id: window.crypto?.randomUUID ? window.crypto.randomUUID() : `service-${Date.now()}`,
     category: "קטגוריה ראשית",
     name: "שירות חדש",
     price: 0,
@@ -3201,9 +3372,18 @@ myBookingsList.addEventListener("click", async (event) => {
       return;
     }
 
-    booking.hidden_for_customer = true;
-    saveState();
-    rerenderAll();
+    try {
+      if (supabaseEnabled) {
+        await supabaseApi.hideMyBooking(booking.id);
+        await refreshStateFromSupabase();
+      } else {
+        booking.hidden_for_customer = true;
+        saveState();
+        rerenderAll();
+      }
+    } catch (error) {
+      appUi.toast(error?.message || "לא הצלחנו להסתיר את התור.", { variant: "error" });
+    }
     return;
   }
 
@@ -3214,14 +3394,23 @@ myBookingsList.addEventListener("click", async (event) => {
       return;
     }
 
-    booking.attendance_confirmation_status = response === "confirmed" ? "confirmed" : "declined";
-    booking.attendance_confirmation_answered_at = new Date().toISOString();
-    notifyOwnerAppointmentUpdated(
-      booking,
-      response === "confirmed" ? "הלקוחה אישרה הגעה" : "הלקוחה סימנה שלא תגיע"
-    );
-    saveState();
-    rerenderAll();
+    try {
+      if (supabaseEnabled) {
+        await supabaseApi.respondAttendance(booking.id, response === "confirmed" ? "confirmed" : "declined");
+        await refreshStateFromSupabase();
+      } else {
+        booking.attendance_confirmation_status = response === "confirmed" ? "confirmed" : "declined";
+        booking.attendance_confirmation_answered_at = new Date().toISOString();
+        notifyOwnerAppointmentUpdated(
+          booking,
+          response === "confirmed" ? "הלקוחה אישרה הגעה" : "הלקוחה סימנה שלא תגיע"
+        );
+        saveState();
+        rerenderAll();
+      }
+    } catch (error) {
+      appUi.toast(error?.message || "לא הצלחנו לשמור את אישור ההגעה.", { variant: "error" });
+    }
     return;
   }
 
@@ -3243,12 +3432,21 @@ myBookingsList.addEventListener("click", async (event) => {
     return;
   }
 
-  booking.status = "cancelled";
-  booking.arrival_status = null;
-  notifyOwnerAppointmentCancelled(booking);
-  maybePromoteWaitlistForBooking(booking);
-  saveState();
-  rerenderAll();
+  try {
+    if (supabaseEnabled) {
+      await supabaseApi.cancelMyBooking(booking.id);
+      await refreshStateFromSupabase();
+    } else {
+      booking.status = "cancelled";
+      booking.arrival_status = null;
+      notifyOwnerAppointmentCancelled(booking);
+      maybePromoteWaitlistForBooking(booking);
+      saveState();
+      rerenderAll();
+    }
+  } catch (error) {
+    appUi.toast(error?.message || "לא הצלחנו לבטל את התור.", { variant: "error" });
+  }
 });
 
 window.addEventListener("storage", (event) => {
@@ -3257,7 +3455,24 @@ window.addEventListener("storage", (event) => {
   }
 });
 
-restoreRememberedCustomerSession();
-notificationCenter?.rememberCurrentNotifications();
-rerenderAll();
-showWizardStep(1);
+async function initializeApp() {
+  restoreRememberedCustomerSession();
+  notificationCenter?.rememberCurrentNotifications();
+  rerenderAll();
+  showWizardStep(1);
+
+  if (!supabaseEnabled) {
+    return;
+  }
+
+  setupPublicRealtimeSubscriptions();
+  await refreshStateFromSupabase();
+  setupPersonalRealtimeSubscriptions();
+
+  supabaseApi.onAuthStateChange(async () => {
+    await refreshStateFromSupabase();
+    setupPersonalRealtimeSubscriptions();
+  });
+}
+
+void initializeApp();
