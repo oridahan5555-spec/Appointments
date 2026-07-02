@@ -320,8 +320,8 @@ function mergePublicState(publicState) {
     state.business = normalizeBusiness(publicState.business);
   }
 
-  state.services = Array.isArray(publicState.services) && publicState.services.length ? publicState.services : state.services;
-  state.workingHours = Array.isArray(publicState.workingHours) && publicState.workingHours.length ? publicState.workingHours : state.workingHours;
+  state.services = Array.isArray(publicState.services) ? publicState.services : state.services;
+  state.workingHours = Array.isArray(publicState.workingHours) ? publicState.workingHours : state.workingHours;
   state.specialHours = normalizeSpecialHours(publicState.specialHours);
   state.blockedSlots = normalizeBlockedSlots(publicState.blockedSlots);
   state.bookings = normalizeBookings(publicState.bookings || [], state.staff, state.services);

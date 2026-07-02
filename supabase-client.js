@@ -325,6 +325,57 @@
     };
   }
 
+  async function getSingleBusinessRow() {
+    const supabase = ensureClient();
+    const { data, error } = await supabase
+      .from("business")
+      .select("id")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return data || null;
+  }
+
+  async function replaceOwnedRows(table, rows) {
+    const supabase = ensureClient();
+    const normalizedRows = Array.isArray(rows) ? rows : [];
+    const desiredIds = new Set(
+      normalizedRows
+        .map((row) => row?.id)
+        .filter((id) => isUuid(id))
+        .map((id) => String(id))
+    );
+
+    if (normalizedRows.length) {
+      const { error: upsertError } = await supabase.from(table).upsert(normalizedRows);
+      if (upsertError) {
+        throw upsertError;
+      }
+    }
+    const { data: existingRows, error: existingError } = await supabase.from(table).select("id");
+    if (existingError) {
+      throw existingError;
+    }
+
+    const idsToDelete = (existingRows || [])
+      .map((row) => row?.id)
+      .filter((id) => isUuid(id) && !desiredIds.has(String(id)));
+
+    if (!idsToDelete.length) {
+      return;
+    }
+
+    const { error } = await supabase.from(table).delete().in("id", idsToDelete);
+    if (error) {
+      throw error;
+    }
+  }
+
   async function getSession() {
     const supabase = ensureClient();
     const { data, error } = await supabase.auth.getSession();
@@ -647,43 +698,26 @@
     const waitlistPayload = (Array.isArray(snapshot.waitlistEntries) ? snapshot.waitlistEntries : []).map(mapWaitlistToDb).filter((item) => item.customer_phone && item.service_id && item.booking_date);
 
     ownerSyncPromise = ownerSyncPromise.then(async () => {
+      if (!businessPayload.id) {
+        const existingBusiness = await getSingleBusinessRow();
+        if (existingBusiness?.id) {
+          businessPayload.id = existingBusiness.id;
+        }
+      }
+
       const { data: businessRow, error: businessError } = await supabase.from("business").upsert(businessPayload).select("*").single();
       if (businessError) throw businessError;
 
-      if (servicesPayload.length) {
-        const { error } = await supabase.from("services").upsert(servicesPayload);
-        if (error) throw error;
-      }
-      const serviceIds = servicesPayload.map((item) => item.id);
-      if (serviceIds.length) {
-        const { error } = await supabase.from("services").delete().not("id", "in", `(${serviceIds.join(",")})`);
-        if (error && !String(error.message || "").includes("0 rows")) throw error;
-      }
+      await replaceOwnedRows("services", servicesPayload);
 
       if (workingHoursPayload.length) {
         const { error } = await supabase.from("working_hours").upsert(workingHoursPayload);
         if (error) throw error;
       }
 
-      if (specialHoursPayload.length) {
-        const { error } = await supabase.from("special_hours").upsert(specialHoursPayload);
-        if (error) throw error;
-      }
-      const specialIds = specialHoursPayload.map((item) => item.id).filter(Boolean);
-      if (specialIds.length) {
-        const { error } = await supabase.from("special_hours").delete().not("id", "in", `(${specialIds.join(",")})`);
-        if (error && !String(error.message || "").includes("0 rows")) throw error;
-      }
+      await replaceOwnedRows("special_hours", specialHoursPayload);
 
-      if (blockedSlotsPayload.length) {
-        const { error } = await supabase.from("blocked_slots").upsert(blockedSlotsPayload);
-        if (error) throw error;
-      }
-      const blockedIds = blockedSlotsPayload.map((item) => item.id).filter(Boolean);
-      if (blockedIds.length) {
-        const { error } = await supabase.from("blocked_slots").delete().not("id", "in", `(${blockedIds.join(",")})`);
-        if (error && !String(error.message || "").includes("0 rows")) throw error;
-      }
+      await replaceOwnedRows("blocked_slots", blockedSlotsPayload);
 
       if (customersPayload.length) {
         const { error } = await supabase.from("customers").upsert(customersPayload, { onConflict: "phone" });
@@ -695,15 +729,7 @@
         if (error) throw error;
       }
 
-      if (waitlistPayload.length) {
-        const { error } = await supabase.from("waitlist_entries").upsert(waitlistPayload);
-        if (error) throw error;
-      }
-      const waitlistIds = waitlistPayload.map((item) => item.id).filter(Boolean);
-      if (waitlistIds.length) {
-        const { error } = await supabase.from("waitlist_entries").delete().not("id", "in", `(${waitlistIds.join(",")})`);
-        if (error && !String(error.message || "").includes("0 rows")) throw error;
-      }
+      await replaceOwnedRows("waitlist_entries", waitlistPayload);
 
       if (notificationsPayload.length) {
         const { error } = await supabase.from("notifications").upsert(notificationsPayload);

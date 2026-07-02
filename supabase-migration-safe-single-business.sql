@@ -682,7 +682,6 @@ $$;
 
 revoke all on function public.cancel_my_booking(uuid) from public;
 grant execute on function public.cancel_my_booking(uuid) to authenticated;
-
 create or replace function public.hide_my_booking(
   p_booking_id uuid
 )

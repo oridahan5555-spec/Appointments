@@ -247,8 +247,8 @@ async function refreshOwnerStateFromSupabase() {
     if (ownerState.business) {
       state.business = normalizeBusiness(ownerState.business);
     }
-    state.services = ownerState.services?.length ? ownerState.services : state.services;
-    state.workingHours = ownerState.workingHours?.length ? ownerState.workingHours : state.workingHours;
+    state.services = Array.isArray(ownerState.services) ? ownerState.services : state.services;
+    state.workingHours = Array.isArray(ownerState.workingHours) ? ownerState.workingHours : state.workingHours;
     state.specialHours = normalizeSpecialHours(ownerState.specialHours || []);
     state.blockedSlots = normalizeBlockedSlots(ownerState.blockedSlots || []);
     state.waitlistEntries = normalizeWaitlistEntries(ownerState.waitlistEntries || []);
@@ -2996,6 +2996,28 @@ window.addEventListener("storage", (event) => {
 async function initializeOwnerPage() {
   showOwnerLogin();
 
+  if (supabaseEnabled) {
+    supabaseApi.onAuthStateChange(async (session) => {
+      if (!session?.user) {
+        ownerSession.authUserId = null;
+        clearOwnerRealtimeSubscriptions();
+        showOwnerLogin();
+        return;
+      }
+
+      ownerSession.authUserId = session.user.id;
+      if (!(await supabaseApi.isOwnerUser())) {
+        clearOwnerRealtimeSubscriptions();
+        showOwnerLogin();
+        return;
+      }
+
+      await refreshOwnerStateFromSupabase();
+      setupOwnerRealtimeSubscriptions();
+      showOwnerLayout();
+    });
+  }
+
   if (!supabaseEnabled) {
     if (isSellerRemembered()) {
       showOwnerLayout();
@@ -3019,20 +3041,6 @@ async function initializeOwnerPage() {
   await refreshOwnerStateFromSupabase();
   setupOwnerRealtimeSubscriptions();
   showOwnerLayout();
-
-  supabaseApi.onAuthStateChange(async (session) => {
-    if (!session?.user) {
-      ownerSession.authUserId = null;
-      clearOwnerRealtimeSubscriptions();
-      showOwnerLogin();
-      return;
-    }
-
-    ownerSession.authUserId = session.user.id;
-    await refreshOwnerStateFromSupabase();
-    setupOwnerRealtimeSubscriptions();
-    showOwnerLayout();
-  });
 }
 
 void initializeOwnerPage();
