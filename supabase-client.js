@@ -4,6 +4,7 @@
   const anonKey = String(config.anonKey || "").trim();
   const ownerLoginName = String(config.ownerLoginName || "admin").trim() || "admin";
   const ownerEmail = String(config.ownerEmail || "").trim().toLowerCase();
+  const ownerPasswordResetRedirect = String(config.ownerPasswordResetRedirect || "").trim();
   const hasLibrary = Boolean(window.supabase?.createClient);
   const isConfigured = Boolean(url && anonKey && hasLibrary);
   const client = isConfigured
@@ -426,7 +427,7 @@
       throw new Error("חסר ownerEmail ב-supabase-config.js.");
     }
 
-    const redirectTo = `${window.location.origin}${window.location.pathname}`;
+    const redirectTo = ownerPasswordResetRedirect || `${window.location.origin}${window.location.pathname}`;
     const { error } = await supabase.auth.resetPasswordForEmail(ownerEmail, { redirectTo });
     if (error) throw error;
     return true;
