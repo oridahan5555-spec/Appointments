@@ -177,13 +177,23 @@ try {
       document.querySelector('.staff-card').click();
       goToScheduleStep.click();
       const reachedSchedule = uiState.wizardStep === 3;
+      const firstModeDefault = uiState.scheduleMode === 'firstAvailable' && !firstAvailablePanel.classList.contains('is-hidden');
+      scheduleModeSwitch.querySelector('[data-schedule-mode="calendar"]').click();
+      const switchedToCalendar = uiState.scheduleMode === 'calendar' && !calendarModePanel.classList.contains('is-hidden');
+      scheduleModeSwitch.querySelector('[data-schedule-mode="firstAvailable"]').click();
+      const firstSlot = firstAvailableList.querySelector('[data-first-date][data-first-time]');
+      if (firstSlot) {
+        firstSlot.click();
+      }
+      const firstAvailableSelected = Boolean(firstSlot) && uiState.wizardStep === 4 && uiState.selectedDate && uiState.selectedTime;
+      backToScheduleStep.click();
       const monthBefore = uiState.selectedMonthKey;
       calendarNextButton.click();
       const nextWorked = uiState.selectedMonthKey !== monthBefore;
       calendarPrevButton.click();
       backToStaffStep.click();
       const backWorked = uiState.wizardStep === 2;
-      return { reachedStaff, reachedSchedule, nextWorked, backWorked };
+      return { reachedStaff, reachedSchedule, firstModeDefault, switchedToCalendar, firstAvailableSelected, nextWorked, backWorked };
     })()`);
     assert(Object.values(navigation).every(Boolean), `Wizard navigation failed: ${JSON.stringify(navigation)}`);
   });

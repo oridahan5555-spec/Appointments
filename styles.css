@@ -1019,6 +1019,99 @@ a.ghost-button.is-keyboard-pressed {
   gap: 14px;
 }
 
+.schedule-mode-switch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+}
+
+.schedule-mode-button {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.schedule-mode-button.is-active {
+  background: linear-gradient(135deg, #f7e9fb, #f2f6ff);
+  color: var(--accent-dark);
+  box-shadow: inset 0 0 0 1px rgba(178, 95, 209, 0.16);
+}
+
+.schedule-mode-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.first-available-list {
+  display: grid;
+  gap: 14px;
+}
+
+.first-available-day {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e7d8f2;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #fff, #fcf8ff);
+}
+
+.first-available-day.is-selected {
+  border-color: #cda3e4;
+  box-shadow: 0 14px 28px rgba(178, 95, 209, 0.12);
+}
+
+.first-available-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.first-available-head strong {
+  font-size: 18px;
+}
+
+.first-available-head span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.first-available-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.first-available-slot {
+  min-width: 84px;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid #d9b8ea;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--accent-dark);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.first-available-slot.is-selected {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: 0 10px 22px rgba(178, 95, 209, 0.14);
+}
+
 .picker-head h3 {
   margin: 0 0 6px;
   font-size: 18px;
@@ -2211,6 +2304,23 @@ a.ghost-button {
 }
 
 @media (max-width: 719px) {
+  .schedule-mode-switch {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .schedule-mode-button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 10px;
+    font-size: 13px;
+  }
+
+  .first-available-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .topbar {
     display: flex;
     align-items: center;

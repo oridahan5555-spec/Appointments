@@ -119,55 +119,70 @@
       <section class="wizard-panel" id="scheduleStep">
         <div class="section-head compact-head">
           <h3>בחירת תאריך ושעה</h3>
-          <p>הימים הזמינים מסומנים בלוח, ורק שעות פנויות באמת מוצגות מתחת.</p>
+          <p>אפשר לבחור דרך לוח רגיל לפי יום, או לקפוץ ישר לימים ולשעות הראשונים שפנויים.</p>
         </div>
 
         <div class="selected-summary" id="selectedSummary"></div>
 
-        <div class="calendar-card">
-          <div class="calendar-head">
-            <button class="icon-button" id="calendarNextButton" type="button" aria-label="חודש הבא">‹</button>
-            <strong id="calendarMonthLabel">מאי 2026</strong>
-            <button class="icon-button" id="calendarPrevButton" type="button" aria-label="חודש קודם">›</button>
-          </div>
-          <div class="calendar-weekdays">
-            <span>א</span>
-            <span>ב</span>
-            <span>ג</span>
-            <span>ד</span>
-            <span>ה</span>
-            <span>ו</span>
-            <span>ש</span>
-          </div>
-          <div class="calendar-grid" id="calendarGrid"></div>
+        <div class="schedule-mode-switch" id="scheduleModeSwitch" role="tablist" aria-label="דרך בחירת זמן">
+          <button class="schedule-mode-button is-active" type="button" data-schedule-mode="firstAvailable">הראשון שפנוי</button>
+          <button class="schedule-mode-button" type="button" data-schedule-mode="calendar">לפי יום</button>
         </div>
 
-        <section class="today-availability">
-          <div class="today-availability-head">
-            <h3>שעות פנויות היום</h3>
-            <p id="todayAvailabilityText">בחרי שירות כדי לראות שעות פנויות להיום.</p>
-          </div>
-          <div class="today-slot-list" id="todaySlotsList"></div>
-        </section>
-
-        <section class="picker-block">
+        <div class="schedule-mode-panel" id="firstAvailablePanel">
           <div class="picker-head">
-            <h3>שעות זמינות</h3>
-            <p>השעות מחולקות לבוקר, צהריים וערב.</p>
+            <h3>הזמנים הראשונים שפנויים</h3>
+            <p>רשימה מרוכזת של הימים הקרובים עם השעות הזמינות הראשונות.</p>
           </div>
-          <div id="timeGroups" class="time-groups"></div>
-          <div class="empty-state is-hidden" id="emptyTimesState">
-            <div class="empty-icon" aria-hidden="true">⌛</div>
-            <p>אין שעות זמינות ביום זה</p>
-          </div>
-          <div class="waitlist-prompt is-hidden" id="waitlistPrompt">
-            <div class="waitlist-prompt-copy">
-              <strong>אין מקום פנוי?</strong>
-              <p>אפשר להצטרף לרשימת המתנה, ואם תור יתבטל הלקוחה הבאה תקבל הודעה שהתפנה מקום.</p>
+          <div id="firstAvailableList" class="first-available-list"></div>
+        </div>
+
+        <div class="schedule-mode-panel is-hidden" id="calendarModePanel">
+          <div class="calendar-card">
+            <div class="calendar-head">
+              <button class="icon-button" id="calendarNextButton" type="button" aria-label="חודש הבא">‹</button>
+              <strong id="calendarMonthLabel">מאי 2026</strong>
+              <button class="icon-button" id="calendarPrevButton" type="button" aria-label="חודש קודם">›</button>
             </div>
-            <button class="ghost-button" id="joinWaitlistButton" type="button">הצטרפות לרשימת המתנה</button>
+            <div class="calendar-weekdays">
+              <span>א</span>
+              <span>ב</span>
+              <span>ג</span>
+              <span>ד</span>
+              <span>ה</span>
+              <span>ו</span>
+              <span>ש</span>
+            </div>
+            <div class="calendar-grid" id="calendarGrid"></div>
           </div>
-        </section>
+
+          <section class="today-availability">
+            <div class="today-availability-head">
+              <h3>שעות פנויות היום</h3>
+              <p id="todayAvailabilityText">בחרי שירות כדי לראות שעות פנויות להיום.</p>
+            </div>
+            <div class="today-slot-list" id="todaySlotsList"></div>
+          </section>
+
+          <section class="picker-block">
+            <div class="picker-head">
+              <h3>שעות זמינות</h3>
+              <p>השעות מחולקות לבוקר, צהריים וערב.</p>
+            </div>
+            <div id="timeGroups" class="time-groups"></div>
+            <div class="empty-state is-hidden" id="emptyTimesState">
+              <div class="empty-icon" aria-hidden="true">⌛</div>
+              <p>אין שעות זמינות ביום זה</p>
+            </div>
+            <div class="waitlist-prompt is-hidden" id="waitlistPrompt">
+              <div class="waitlist-prompt-copy">
+                <strong>אין מקום פנוי?</strong>
+                <p>אפשר להצטרף לרשימת המתנה, ואם תור יתבטל הלקוחה הבאה תקבל הודעה שהתפנה מקום.</p>
+              </div>
+              <button class="ghost-button" id="joinWaitlistButton" type="button">הצטרפות לרשימת המתנה</button>
+            </div>
+          </section>
+        </div>
 
         <div class="panel-actions split-actions">
           <button class="ghost-button" id="backToStaffStep" type="button">חזרה</button>

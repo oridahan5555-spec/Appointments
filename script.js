@@ -66,6 +66,7 @@ const state = loadState();
 
 const uiState = {
   wizardStep: 1,
+  scheduleMode: "firstAvailable",
   selectedServiceId: null,
   selectedServiceIds: [],
   selectedStaffId: DEFAULT_OWNER_STAFF.id,
@@ -116,6 +117,10 @@ const staffCards = document.getElementById("staffCards");
 const selectedSummary = document.getElementById("selectedSummary");
 const calendarMonthLabel = document.getElementById("calendarMonthLabel");
 const calendarGrid = document.getElementById("calendarGrid");
+const scheduleModeSwitch = document.getElementById("scheduleModeSwitch");
+const firstAvailablePanel = document.getElementById("firstAvailablePanel");
+const calendarModePanel = document.getElementById("calendarModePanel");
+const firstAvailableList = document.getElementById("firstAvailableList");
 const calendarPrevButton = document.getElementById("calendarPrevButton");
 const calendarNextButton = document.getElementById("calendarNextButton");
 const timeGroups = document.getElementById("timeGroups");
@@ -1773,6 +1778,79 @@ function renderCalendar() {
     .join("");
 }
 
+function buildFirstAvailableDays(limitDays = 7, searchWindow = 30) {
+  const items = [];
+
+  for (let offset = 0; offset < searchWindow && items.length < limitDays; offset += 1) {
+    const date = new Date();
+    date.setDate(date.getDate() + offset);
+    const dateValue = localDateValue(date);
+    const slots = getAvailableSlots(dateValue);
+
+    if (!slots.length) {
+      continue;
+    }
+
+    items.push({
+      date: dateValue,
+      slots: slots.slice(0, 10)
+    });
+  }
+
+  return items;
+}
+
+function renderScheduleMode() {
+  scheduleModeSwitch?.querySelectorAll("[data-schedule-mode]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.scheduleMode === uiState.scheduleMode);
+  });
+
+  firstAvailablePanel?.classList.toggle("is-hidden", uiState.scheduleMode !== "firstAvailable");
+  calendarModePanel?.classList.toggle("is-hidden", uiState.scheduleMode !== "calendar");
+}
+
+function renderFirstAvailableList() {
+  const serviceBundle = getSelectedServiceBundle();
+
+  if (!firstAvailableList) {
+    return;
+  }
+
+  if (!serviceBundle) {
+    firstAvailableList.innerHTML = '<div class="empty-state"><div class="empty-icon" aria-hidden="true">⌛</div><p>בחרי שירות כדי לראות את הזמנים הראשונים שפנויים.</p></div>';
+    return;
+  }
+
+  const availableDays = buildFirstAvailableDays();
+  if (!availableDays.length) {
+    firstAvailableList.innerHTML = '<div class="empty-state"><div class="empty-icon" aria-hidden="true">⌛</div><p>לא מצאנו כרגע זמנים קרובים. אפשר לעבור ללשונית "לפי יום".</p></div>';
+    return;
+  }
+
+  firstAvailableList.innerHTML = availableDays
+    .map((day) => `
+      <section class="first-available-day ${uiState.selectedDate === day.date ? "is-selected" : ""}">
+        <div class="first-available-head">
+          <strong>${formatDisplayDate(day.date)}</strong>
+          <span>${day.slots.length} שעות קרובות</span>
+        </div>
+        <div class="first-available-slots">
+          ${day.slots.map((time) => `
+            <button
+              class="first-available-slot ${uiState.selectedDate === day.date && uiState.selectedTime === time ? "is-selected" : ""}"
+              type="button"
+              data-first-date="${day.date}"
+              data-first-time="${time}"
+            >
+              ${time}
+            </button>
+          `).join("")}
+        </div>
+      </section>
+    `)
+    .join("");
+}
+
 function groupTimes(times) {
   const groups = {
     בוקר: [],
@@ -2235,6 +2313,8 @@ function rerenderAll() {
   renderServices();
   renderStaff();
   renderSelectedSummary();
+  renderScheduleMode();
+  renderFirstAvailableList();
   renderCalendar();
   renderTodayAvailability();
   renderTimeOptions();
@@ -2519,6 +2599,30 @@ timeGroups.addEventListener("click", (event) => {
   uiState.selectedTime = button.dataset.timeValue;
   hideBookingSuccess();
   rerenderAll();
+});
+
+scheduleModeSwitch?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-schedule-mode]");
+  if (!button) {
+    return;
+  }
+
+  uiState.scheduleMode = button.dataset.scheduleMode || "firstAvailable";
+  rerenderAll();
+});
+
+firstAvailableList?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-first-date][data-first-time]");
+  if (!button) {
+    return;
+  }
+
+  uiState.selectedDate = button.dataset.firstDate;
+  uiState.selectedTime = button.dataset.firstTime;
+  uiState.selectedMonthKey = monthKey(new Date(`${uiState.selectedDate}T00:00:00`));
+  hideBookingSuccess();
+  rerenderAll();
+  goToStep(4);
 });
 
 joinWaitlistButton?.addEventListener("click", () => {
