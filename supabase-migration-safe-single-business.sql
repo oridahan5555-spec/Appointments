@@ -82,6 +82,10 @@ alter table public.notifications enable row level security;
 alter table public.waitlist_entries enable row level security;
 alter table public.owner_profiles enable row level security;
 
+revoke all on public.owner_profiles from public;
+revoke all on public.owner_profiles from anon;
+grant select, update on public.owner_profiles to authenticated;
+
 create or replace function public.is_owner()
 returns boolean
 language sql
