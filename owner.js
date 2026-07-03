@@ -100,8 +100,10 @@ const ownerSession = {
 const ownerBrandName = document.getElementById("ownerBrandName");
 const ownerBrandDescription = document.getElementById("ownerBrandDescription");
 const ownerLoginGate = document.getElementById("ownerLoginGate");
+const ownerRecoveryGate = document.getElementById("ownerRecoveryGate");
 const ownerLayout = document.getElementById("ownerLayout");
 const ownerLoginForm = document.getElementById("ownerLoginForm");
+const ownerRecoveryForm = document.getElementById("ownerRecoveryForm");
 const ownerForgotPasswordButton = document.getElementById("ownerForgotPasswordButton");
 const ownerLogoutButton = document.getElementById("ownerLogoutButton");
 const ownerStatsGrid = document.getElementById("ownerStatsGrid");
@@ -2271,6 +2273,7 @@ function showOwnerLayout() {
 
 function showOwnerLogin() {
   ownerLogoutButton.classList.add("is-hidden");
+  ownerRecoveryGate?.classList.add("is-hidden");
   ownerLayout.classList.add("is-hidden");
   ownerLoginGate.classList.remove("is-hidden");
   if (ownerLoginForm?.elements?.username) {
@@ -2280,6 +2283,26 @@ function showOwnerLogin() {
     ownerLoginForm.elements.password.value = "";
   }
   notificationCenter?.render();
+}
+
+function showOwnerRecovery() {
+  ownerLogoutButton.classList.add("is-hidden");
+  ownerLoginGate.classList.add("is-hidden");
+  ownerLayout.classList.add("is-hidden");
+  ownerRecoveryGate?.classList.remove("is-hidden");
+  if (ownerRecoveryForm?.reset) {
+    ownerRecoveryForm.reset();
+  }
+}
+
+function isPasswordRecoveryUrl() {
+  const hash = window.location.hash.replace(/^#/, "");
+  if (!hash) {
+    return false;
+  }
+
+  const hashParams = new URLSearchParams(hash);
+  return hashParams.get("type") === "recovery";
 }
 
 ownerLoginForm.addEventListener("submit", async (event) => {
@@ -2329,6 +2352,40 @@ ownerForgotPasswordButton?.addEventListener("click", async () => {
     appUi.toast("שלחנו קישור איפוס סיסמה לכתובת של בעל העסק.", { variant: "success" });
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו לשלוח קישור איפוס סיסמה.", { variant: "error" });
+  }
+});
+
+ownerRecoveryForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  if (!supabaseEnabled) {
+    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
+    return;
+  }
+
+  const formData = new FormData(ownerRecoveryForm);
+  const newPassword = String(formData.get("newPassword") || "");
+  const confirmPassword = String(formData.get("confirmPassword") || "");
+
+  if (!newPassword || !confirmPassword) {
+    appUi.toast("יש למלא את שתי הסיסמאות.", { variant: "error" });
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    appUi.toast("הסיסמאות לא תואמות.", { variant: "error" });
+    return;
+  }
+
+  try {
+    await supabaseApi.updateOwnerPassword(newPassword);
+    appUi.toast("הסיסמה עודכנה, אפשר להתחבר", { variant: "success" });
+    await supabaseApi.signOut();
+    ownerSession.authUserId = null;
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showOwnerLogin();
+  } catch (error) {
+    appUi.toast(error?.message || "לא הצלחנו לעדכן את הסיסמה.", { variant: "error" });
   }
 });
 ownerLogoutButton.addEventListener("click", async () => {
@@ -3024,10 +3081,20 @@ window.addEventListener("storage", (event) => {
 });
 
 async function initializeOwnerPage() {
-  showOwnerLogin();
+  if (isPasswordRecoveryUrl()) {
+    showOwnerRecovery();
+  } else {
+    showOwnerLogin();
+  }
 
   if (supabaseEnabled) {
-    supabaseApi.onAuthStateChange(async (session) => {
+    supabaseApi.onAuthStateChange(async (event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        ownerSession.authUserId = session?.user?.id || null;
+        showOwnerRecovery();
+        return;
+      }
+
       if (!session?.user) {
         ownerSession.authUserId = null;
         clearOwnerRealtimeSubscriptions();
@@ -3052,6 +3119,10 @@ async function initializeOwnerPage() {
     if (isSellerRemembered()) {
       showOwnerLayout();
     }
+    return;
+  }
+
+  if (isPasswordRecoveryUrl()) {
     return;
   }
 

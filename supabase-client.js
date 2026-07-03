@@ -427,10 +427,22 @@
       throw new Error("חסר ownerEmail ב-supabase-config.js.");
     }
 
-    const redirectTo = ownerPasswordResetRedirect || `${window.location.origin}${window.location.pathname}`;
+    const redirectTo = ownerPasswordResetRedirect || "https://appointments-rosy-chi.vercel.app/owner.html";
     const { error } = await supabase.auth.resetPasswordForEmail(ownerEmail, { redirectTo });
     if (error) throw error;
     return true;
+  }
+
+  async function updateOwnerPassword(password) {
+    const supabase = ensureClient();
+    const nextPassword = String(password || "");
+    if (!nextPassword.trim()) {
+      throw new Error("חסרה סיסמה חדשה.");
+    }
+
+    const { data, error } = await supabase.auth.updateUser({ password: nextPassword });
+    if (error) throw error;
+    return data.user || null;
   }
 
   async function signInOrRegisterCustomer(payload) {
@@ -803,8 +815,8 @@
       return { data: { subscription: { unsubscribe: () => undefined } } };
     }
 
-    return client.auth.onAuthStateChange((_event, session) => {
-      callback?.(session);
+    return client.auth.onAuthStateChange((event, session) => {
+      callback?.(event, session);
     });
   }
 
@@ -816,6 +828,7 @@
     isOwnerUser,
     signInOwner,
     sendOwnerPasswordReset,
+    updateOwnerPassword,
     signOut,
     signInOrRegisterCustomer,
     updateOwnerCredentials,
