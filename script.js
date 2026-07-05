@@ -284,8 +284,39 @@ function saveState() {
 
 let publicRealtimeCleanups = [];
 let personalRealtimeCleanups = [];
+let publicRefreshTimeoutId = null;
+let isHydratingPublicState = false;
+let publicSupabaseErrorMessage = "";
+let publicSupabaseErrorTimestamp = 0;
+let publicLoadedFromSupabase = false;
+
+function showPublicLoadingState(message = "טוען נתוני עסק...") {
+  brandName.textContent = message;
+  businessName.textContent = message;
+  businessDescription.textContent = "מושך את שם העסק, השירותים והשעות ישירות מ-Supabase.";
+}
+
+function showPublicSupabaseError(error) {
+  const message = String(error?.message || "לא הצלחנו לטעון את נתוני העסק מ-Supabase.");
+  const now = Date.now();
+  if (message === publicSupabaseErrorMessage && now - publicSupabaseErrorTimestamp < 5000) {
+    return;
+  }
+
+  publicSupabaseErrorMessage = message;
+  publicSupabaseErrorTimestamp = now;
+  brandName.textContent = "שגיאת סנכרון";
+  businessName.textContent = "לא הצלחנו לטעון את העסק";
+  businessDescription.textContent = message;
+  appUi.toast(message, { variant: "error" });
+}
 
 function clearRealtimeSubscriptions(collection) {
+  if (collection === publicRealtimeCleanups && publicRefreshTimeoutId) {
+    clearTimeout(publicRefreshTimeoutId);
+    publicRefreshTimeoutId = null;
+  }
+
   collection.forEach((cleanup) => {
     try {
       cleanup?.();
@@ -355,21 +386,50 @@ async function refreshStateFromSupabase() {
     return;
   }
 
-  await syncSessionFromSupabase();
-  const publicState = await supabaseApi.loadPublicState();
-  mergePublicState(publicState);
+  isHydratingPublicState = true;
+  try {
+    await syncSessionFromSupabase();
+    const publicState = await supabaseApi.loadPublicState();
+    if (!publicState?.business?.id) {
+      throw new Error("לא נמצא עסק פעיל ב-Supabase.");
+    }
 
-  if (session.role === "customer") {
-    const customerState = await supabaseApi.loadCustomerState();
-    mergeCustomerState(customerState);
-  } else {
-    state.notifications = [];
-    state.waitlistEntries = [];
+    mergePublicState(publicState);
+
+    if (session.role === "customer") {
+      const customerState = await supabaseApi.loadCustomerState();
+      mergeCustomerState(customerState);
+    } else {
+      state.notifications = [];
+      state.waitlistEntries = [];
+    }
+
+    publicLoadedFromSupabase = true;
+    saveState();
+    rerenderAll();
+    notificationCenter?.showNewBrowserNotifications();
+  } catch (error) {
+    publicLoadedFromSupabase = false;
+    showPublicSupabaseError(error);
+    throw error;
+  } finally {
+    isHydratingPublicState = false;
+  }
+}
+
+function schedulePublicRefresh() {
+  if (!supabaseEnabled) {
+    return;
   }
 
-  saveState();
-  rerenderAll();
-  notificationCenter?.showNewBrowserNotifications();
+  if (publicRefreshTimeoutId) {
+    clearTimeout(publicRefreshTimeoutId);
+  }
+
+  publicRefreshTimeoutId = setTimeout(() => {
+    publicRefreshTimeoutId = null;
+    void refreshStateFromSupabase().catch(() => {});
+  }, 250);
 }
 
 function setupPublicRealtimeSubscriptions() {
@@ -380,7 +440,7 @@ function setupPublicRealtimeSubscriptions() {
   clearRealtimeSubscriptions(publicRealtimeCleanups);
   ["business", "services", "working_hours", "special_hours", "blocked_slots", "bookings"].forEach((table) => {
     publicRealtimeCleanups.push(supabaseApi.subscribe(table, () => {
-      void refreshStateFromSupabase();
+      schedulePublicRefresh();
     }));
   });
 }
@@ -396,13 +456,13 @@ function setupPersonalRealtimeSubscriptions() {
   }
 
   personalRealtimeCleanups.push(supabaseApi.subscribe("bookings", () => {
-    void refreshStateFromSupabase();
+    schedulePublicRefresh();
   }, `customer_auth_user_id=eq.${session.authUserId}`));
   personalRealtimeCleanups.push(supabaseApi.subscribe("notifications", () => {
-    void refreshStateFromSupabase();
+    schedulePublicRefresh();
   }, `user_id=eq.${session.authUserId}`));
   personalRealtimeCleanups.push(supabaseApi.subscribe("waitlist_entries", () => {
-    void refreshStateFromSupabase();
+    schedulePublicRefresh();
   }, `customer_auth_user_id=eq.${session.authUserId}`));
 }
 
@@ -433,6 +493,10 @@ function isSellerRemembered() {
 }
 
 function restoreRememberedCustomerSession() {
+  if (supabaseEnabled) {
+    return;
+  }
+
   try {
     const raw = localStorage.getItem(CUSTOMER_SESSION_KEY);
     if (!raw) {
@@ -3545,25 +3609,38 @@ window.addEventListener("storage", (event) => {
 });
 
 async function initializeApp() {
-  restoreRememberedCustomerSession();
-  notificationCenter?.rememberCurrentNotifications();
-  rerenderAll();
-  showWizardStep(1);
-
   if (!supabaseEnabled) {
+    restoreRememberedCustomerSession();
+    notificationCenter?.rememberCurrentNotifications();
+    rerenderAll();
+    showWizardStep(1);
     return;
   }
 
+  showPublicLoadingState();
   setupPublicRealtimeSubscriptions();
-  await refreshStateFromSupabase();
-  setupPersonalRealtimeSubscriptions();
+  try {
+    await refreshStateFromSupabase();
+    setupPersonalRealtimeSubscriptions();
+    notificationCenter?.rememberCurrentNotifications();
+    showWizardStep(1);
+  } catch (error) {
+    clearRealtimeSubscriptions(personalRealtimeCleanups);
+  }
 
   supabaseApi.onAuthStateChange(async (event) => {
     if (event === "PASSWORD_RECOVERY") {
       showCustomerRecoveryPanel();
     }
-    await refreshStateFromSupabase();
-    setupPersonalRealtimeSubscriptions();
+    try {
+      if (!publicLoadedFromSupabase && !isHydratingPublicState) {
+        showPublicLoadingState();
+      }
+      await refreshStateFromSupabase();
+      setupPersonalRealtimeSubscriptions();
+    } catch (error) {
+      clearRealtimeSubscriptions(personalRealtimeCleanups);
+    }
   });
 }
 

@@ -586,6 +586,10 @@
       }
     });
 
+    if (!businessResponse.data?.id) {
+      throw new Error("לא נמצאה רשומת עסק ב-Supabase.");
+    }
+
     return {
       business: mapBusinessFromDb(businessResponse.data),
       services: mapServicesFromDb(servicesResponse.data),

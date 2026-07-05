@@ -99,6 +99,7 @@ const ownerSession = {
 
 const ownerBrandName = document.getElementById("ownerBrandName");
 const ownerBrandDescription = document.getElementById("ownerBrandDescription");
+const ownerAccessMessage = document.getElementById("ownerAccessMessage");
 const ownerLoginGate = document.getElementById("ownerLoginGate");
 const ownerRecoveryGate = document.getElementById("ownerRecoveryGate");
 const ownerLayout = document.getElementById("ownerLayout");
@@ -233,6 +234,17 @@ let isHydratingOwnerState = false;
 let ownerRefreshTimeoutId = null;
 let ownerSupabaseErrorTimestamp = 0;
 let ownerSupabaseErrorMessage = "";
+let ownerLoadedFromSupabase = false;
+
+function setOwnerAccessMessage(message = "", isError = false) {
+  if (!ownerAccessMessage) {
+    return;
+  }
+
+  ownerAccessMessage.textContent = message;
+  ownerAccessMessage.classList.toggle("is-hidden", !message);
+  ownerAccessMessage.style.color = isError ? "#b42318" : "";
+}
 
 function showOwnerSupabaseError(error) {
   const message = String(error?.message || "לא הצלחנו לעדכן נתונים מ-Supabase.");
@@ -270,6 +282,14 @@ async function refreshOwnerStateFromSupabase({ silent = false } = {}) {
   isHydratingOwnerState = true;
   try {
     const ownerState = await supabaseApi.loadOwnerState();
+    if (!ownerState?.business?.id) {
+      throw new Error("לא נמצא עסק מחובר ב-Supabase עבור חשבון הניהול הזה.");
+    }
+
+    if (!ownerState?.owner?.id) {
+      throw new Error("אין הרשאת ניהול לחשבון הזה.");
+    }
+
     if (ownerState.business) {
       state.business = normalizeBusiness(ownerState.business);
     }
@@ -281,13 +301,16 @@ async function refreshOwnerStateFromSupabase({ silent = false } = {}) {
     state.users = normalizeUsers(ownerState.users || []);
     state.notifications = normalizeNotifications(ownerState.notifications || []);
     state.bookings = normalizeBookings(ownerState.bookings || [], state.staff, state.services);
+    ownerLoadedFromSupabase = true;
     saveState();
     rerenderAll();
     notificationCenter?.showNewBrowserNotifications();
   } catch (error) {
+    ownerLoadedFromSupabase = false;
     if (!silent) {
       showOwnerSupabaseError(error);
     }
+    throw error;
   } finally {
     isHydratingOwnerState = false;
   }
@@ -304,7 +327,7 @@ function scheduleOwnerRefresh() {
 
   ownerRefreshTimeoutId = setTimeout(() => {
     ownerRefreshTimeoutId = null;
-    void refreshOwnerStateFromSupabase({ silent: true });
+    void refreshOwnerStateFromSupabase();
   }, 250);
 }
 
@@ -326,12 +349,7 @@ async function ensureOwnerSupabaseBootstrap() {
     return;
   }
 
-  try {
-    await supabaseApi.syncOwnerState(state);
-    localStorage.setItem(OWNER_SUPABASE_BOOTSTRAP_KEY, "1");
-  } catch (error) {
-    console.warn(error);
-  }
+  localStorage.setItem(OWNER_SUPABASE_BOOTSTRAP_KEY, "1");
 }
 
 function rememberSellerSession() {
@@ -2305,6 +2323,7 @@ function showOwnerLayout() {
   ownerLogoutButton.classList.remove("is-hidden");
   ownerLoginGate.classList.add("is-hidden");
   ownerLayout.classList.remove("is-hidden");
+  setOwnerAccessMessage("");
   notificationCenter?.rememberCurrentNotifications();
   notificationCenter?.askAfterOwnerLogin();
   rerenderAll();
@@ -2315,6 +2334,9 @@ function showOwnerLogin() {
   ownerRecoveryGate?.classList.add("is-hidden");
   ownerLayout.classList.add("is-hidden");
   ownerLoginGate.classList.remove("is-hidden");
+  if (!ownerAccessMessage?.textContent) {
+    setOwnerAccessMessage("זה דף הניהול של בעלת העסק. מכאן מנהלים את התורים, השירותים, השעות ופרטי העסק.");
+  }
   if (ownerLoginForm?.elements?.username) {
     ownerLoginForm.elements.username.value = OWNER_LOGIN_NAME;
   }
@@ -2328,6 +2350,7 @@ function showOwnerRecovery() {
   ownerLogoutButton.classList.add("is-hidden");
   ownerLoginGate.classList.add("is-hidden");
   ownerLayout.classList.add("is-hidden");
+  setOwnerAccessMessage("");
   ownerRecoveryGate?.classList.remove("is-hidden");
   if (ownerRecoveryForm?.reset) {
     ownerRecoveryForm.reset();
@@ -2367,8 +2390,10 @@ ownerLoginForm.addEventListener("submit", async (event) => {
     if (!(await supabaseApi.isOwnerUser())) {
       await supabaseApi.signOut();
       ownerSession.authUserId = null;
-      throw new Error("המשתמש הזה קיים ב-Supabase Auth אבל עדיין לא חובר לטבלת owner_profiles.");
+      setOwnerAccessMessage("החשבון הזה לא מחובר להרשאת ניהול של העסק.", true);
+      throw new Error("החשבון הזה לא מחובר להרשאת ניהול של העסק.");
     }
+    setOwnerAccessMessage("");
     rememberSellerSession();
     sessionStorage.setItem(SELLER_SESSION_KEY, "1");
     await ensureOwnerSupabaseBootstrap();
@@ -3144,13 +3169,20 @@ async function initializeOwnerPage() {
       ownerSession.authUserId = session.user.id;
       if (!(await supabaseApi.isOwnerUser())) {
         clearOwnerRealtimeSubscriptions();
+        setOwnerAccessMessage("החשבון הזה מחובר ל-Supabase אבל אין לו הרשאת ניהול לעסק הזה.", true);
         showOwnerLogin();
         return;
       }
 
-      await refreshOwnerStateFromSupabase();
-      setupOwnerRealtimeSubscriptions();
-      showOwnerLayout();
+      try {
+        await refreshOwnerStateFromSupabase();
+        setupOwnerRealtimeSubscriptions();
+        showOwnerLayout();
+      } catch (error) {
+        clearOwnerRealtimeSubscriptions();
+        setOwnerAccessMessage(String(error?.message || "לא הצלחנו לטעון את נתוני הניהול מהשרת."), true);
+        showOwnerLogin();
+      }
     });
   }
 
@@ -3172,15 +3204,22 @@ async function initializeOwnerPage() {
 
   ownerSession.authUserId = currentUser.id;
   if (!(await supabaseApi.isOwnerUser())) {
+    setOwnerAccessMessage("החשבון הזה מחובר ל-Supabase אבל אין לו הרשאת ניהול לעסק הזה.", true);
     return;
   }
 
   rememberSellerSession();
   sessionStorage.setItem(SELLER_SESSION_KEY, "1");
   await ensureOwnerSupabaseBootstrap();
-  await refreshOwnerStateFromSupabase();
-  setupOwnerRealtimeSubscriptions();
-  showOwnerLayout();
+  try {
+    await refreshOwnerStateFromSupabase();
+    setupOwnerRealtimeSubscriptions();
+    showOwnerLayout();
+  } catch (error) {
+    clearOwnerRealtimeSubscriptions();
+    setOwnerAccessMessage(String(error?.message || "לא הצלחנו לטעון את נתוני הניהול מהשרת."), true);
+    showOwnerLogin();
+  }
 }
 
 void initializeOwnerPage();
