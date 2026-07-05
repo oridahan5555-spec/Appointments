@@ -399,7 +399,19 @@ let publicSupabaseErrorMessage = "";
 let publicSupabaseErrorTimestamp = 0;
 let publicLoadedFromSupabase = false;
 
+function shouldPreserveRenderedBusiness() {
+  return Boolean(
+    publicLoadedFromSupabase &&
+    state.business?.id &&
+    String(state.business?.name || "").trim()
+  );
+}
+
 function showPublicLoadingState(message = "טוען נתוני עסק...") {
+  if (shouldPreserveRenderedBusiness()) {
+    return;
+  }
+
   brandName.textContent = message;
   businessName.textContent = message;
   businessDescription.textContent = "מושך את שם העסק, השירותים והשעות ישירות מ-Supabase.";
@@ -3817,9 +3829,6 @@ async function initializeApp() {
       showCustomerRecoveryPanel();
     }
     try {
-      if (!publicLoadedFromSupabase && !isHydratingPublicState) {
-        showPublicLoadingState();
-      }
       await refreshStateFromSupabase();
       setupPersonalRealtimeSubscriptions();
     } catch (error) {
