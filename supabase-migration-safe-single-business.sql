@@ -82,6 +82,32 @@ alter table public.notifications enable row level security;
 alter table public.waitlist_entries enable row level security;
 alter table public.owner_profiles enable row level security;
 
+revoke all on public.business from public;
+revoke all on public.services from public;
+revoke all on public.working_hours from public;
+revoke all on public.bookings from public;
+revoke all on public.customers from public;
+revoke all on public.notifications from public;
+revoke all on public.waitlist_entries from public;
+revoke all on public.owner_profiles from public;
+revoke all on public.special_hours from public;
+revoke all on public.blocked_slots from public;
+
+grant select on public.business to anon, authenticated;
+grant select on public.services to anon, authenticated;
+grant select on public.working_hours to anon, authenticated;
+
+grant select, insert, update, delete on public.business to authenticated;
+grant select, insert, update, delete on public.services to authenticated;
+grant select, insert, update, delete on public.working_hours to authenticated;
+grant select, insert, update, delete on public.bookings to authenticated;
+grant select, insert, update, delete on public.customers to authenticated;
+grant select, insert, update, delete on public.notifications to authenticated;
+grant select, insert, update, delete on public.waitlist_entries to authenticated;
+grant select, update on public.owner_profiles to authenticated;
+grant select, insert, update, delete on public.special_hours to authenticated;
+grant select, insert, update, delete on public.blocked_slots to authenticated;
+
 revoke all on public.owner_profiles from public;
 revoke all on public.owner_profiles from anon;
 grant select, update on public.owner_profiles to authenticated;
