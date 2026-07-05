@@ -196,6 +196,7 @@
       firstName: row.first_name || "",
       lastName: row.last_name || "",
       phone: row.phone || "",
+      email: row.email || "",
       password: "",
       owner_note: row.owner_note || "",
       is_blocked: Boolean(row.is_blocked),
@@ -213,6 +214,7 @@
       first_name: String(user?.firstName || "").trim(),
       last_name: String(user?.lastName || "").trim(),
       phone: normalizePhone(user?.phone),
+      email: String(user?.email || "").trim().toLowerCase() || null,
       owner_note: String(user?.owner_note || "").trim(),
       is_blocked: Boolean(user?.is_blocked),
       blocked_reason: String(user?.blocked_reason || "").trim(),
@@ -463,68 +465,93 @@
     return data.user || null;
   }
 
-  async function signInOrRegisterCustomer(payload) {
+  async function claimCustomerAccount(payload = {}) {
     const supabase = ensureClient();
-    const phone = normalizePhone(payload?.phone);
-    const explicitEmail = String(payload?.email || "").trim().toLowerCase();
-    const fallbackEmail = customerEmailFromPhone(phone);
-    const email = explicitEmail || fallbackEmail;
+    const user = await getCurrentUser();
+    if (!user) {
+      throw new Error("צריך להתחבר לפני שיוצרים פרופיל לקוחה.");
+    }
+
+    const firstName = String(payload?.firstName || user.user_metadata?.first_name || "").trim();
+    const lastName = String(payload?.lastName || user.user_metadata?.last_name || "").trim();
+    const phone = normalizePhone(payload?.phone || user.user_metadata?.phone);
+    const email = String(payload?.email || user.email || "").trim().toLowerCase();
+
+    const { data, error } = await supabase.rpc("claim_customer_account", {
+      p_first_name: firstName,
+      p_last_name: lastName,
+      p_phone: phone,
+      p_email: email
+    });
+
+    if (error) {
+      if (String(error.message || "").includes("CUSTOMER_ALREADY_LINKED")) {
+        throw new Error("הטלפון או האימייל כבר שייכים לחשבון לקוחה אחר.");
+      }
+      if (String(error.message || "").includes("PHONE_REQUIRED_TO_CREATE_CUSTOMER")) {
+        throw new Error("כדי ליצור חשבון חדש חייבים טלפון תקין.");
+      }
+      throw error;
+    }
+
+    return data;
+  }
+
+  async function registerCustomer(payload) {
+    const supabase = ensureClient();
+    const email = String(payload?.email || "").trim().toLowerCase();
     const password = String(payload?.password || "");
     const firstName = String(payload?.firstName || "").trim();
     const lastName = String(payload?.lastName || "").trim();
-    if (!email || !password) {
-      throw new Error("חסרים אימייל או סיסמה.");
+    const phone = normalizePhone(payload?.phone);
+
+    if (!email || !password || !firstName || !lastName || !phone) {
+      throw new Error("צריך למלא את כל הפרטים כדי ליצור חשבון.");
     }
 
-    let authResult = await supabase.auth.signInWithPassword({ email, password });
-    if (authResult.error && explicitEmail && fallbackEmail && explicitEmail !== fallbackEmail) {
-      authResult = await supabase.auth.signInWithPassword({ email: fallbackEmail, password });
-    }
-
-    if (authResult.error) {
-      const signUpResult = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            phone,
-            first_name: firstName,
-            last_name: lastName,
-            role: "customer"
-          }
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          phone,
+          first_name: firstName,
+          last_name: lastName,
+          role: "customer"
         }
-      });
-
-      if (signUpResult.error) {
-        throw signUpResult.error;
       }
-
-      if (!signUpResult.data.session) {
-        throw new Error("צריך לכבות Email confirmation ב-Supabase כדי שהרשמת לקוחות תעבוד בלי אימייל.");
-      }
-
-      authResult = signUpResult;
-    }
-
-    const user = authResult.data.user;
-    if (!user) {
-      throw new Error("לא הצלחנו לזהות את הלקוחה אחרי ההתחברות.");
-    }
-
-    const { error: upsertError } = await supabase.from("customers").upsert({
-      auth_user_id: user.id,
-      first_name: firstName,
-      last_name: lastName,
-      phone
-    }, {
-      onConflict: "phone"
     });
 
-    if (upsertError) {
-      throw upsertError;
+    if (error) {
+      throw error;
     }
 
-    return authResult.data;
+    if (!data.session) {
+      throw new Error("צריך לכבות Email confirmation ב-Supabase כדי שהלקוחה תיכנס אוטומטית אחרי יצירת החשבון.");
+    }
+
+    await claimCustomerAccount({ firstName, lastName, phone, email });
+    return data;
+  }
+
+  async function signInCustomer(payload) {
+    const supabase = ensureClient();
+    const email = String(payload?.email || "").trim().toLowerCase();
+    const password = String(payload?.password || "");
+    if (!email || !password) {
+      throw new Error("צריך למלא אימייל וסיסמה.");
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      if (String(error.message || "").toLowerCase().includes("invalid login credentials")) {
+        throw new Error("האימייל או הסיסמה לא נכונים.");
+      }
+      throw error;
+    }
+
+    await claimCustomerAccount({ email });
+    return data;
   }
 
   async function updateOwnerCredentials(payload) {
@@ -859,7 +886,9 @@
     sendCustomerPasswordReset,
     updateOwnerPassword,
     signOut,
-    signInOrRegisterCustomer,
+    claimCustomerAccount,
+    registerCustomer,
+    signInCustomer,
     updateOwnerCredentials,
     createOwnerProfile,
     loadPublicState,

@@ -2003,6 +2003,16 @@ a.ghost-button {
   gap: 12px;
 }
 
+.auth-choice-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-choice-button {
+  width: 100%;
+  min-height: 54px;
+}
+
 @keyframes fadeSlide {
   from {
     opacity: 0;
