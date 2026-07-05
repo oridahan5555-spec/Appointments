@@ -433,6 +433,24 @@
     return true;
   }
 
+  async function sendCustomerPasswordReset(email) {
+    const supabase = ensureClient();
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    if (!normalizedEmail) {
+      throw new Error("צריך למלא אימייל כדי לאפס סיסמה.");
+    }
+
+    const redirectTo = `${window.location.origin}/index.html`;
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo });
+    if (error) {
+      if (String(error.message || "").toLowerCase().includes("rate limit")) {
+        throw new Error("נשלחו יותר מדי בקשות איפוס. חכי רגע ונסי שוב.");
+      }
+      throw error;
+    }
+    return true;
+  }
+
   async function updateOwnerPassword(password) {
     const supabase = ensureClient();
     const nextPassword = String(password || "");
@@ -448,15 +466,21 @@
   async function signInOrRegisterCustomer(payload) {
     const supabase = ensureClient();
     const phone = normalizePhone(payload?.phone);
-    const email = customerEmailFromPhone(phone);
+    const explicitEmail = String(payload?.email || "").trim().toLowerCase();
+    const fallbackEmail = customerEmailFromPhone(phone);
+    const email = explicitEmail || fallbackEmail;
     const password = String(payload?.password || "");
     const firstName = String(payload?.firstName || "").trim();
     const lastName = String(payload?.lastName || "").trim();
     if (!email || !password) {
-      throw new Error("חסרים טלפון או סיסמה.");
+      throw new Error("חסרים אימייל או סיסמה.");
     }
 
     let authResult = await supabase.auth.signInWithPassword({ email, password });
+    if (authResult.error && explicitEmail && fallbackEmail && explicitEmail !== fallbackEmail) {
+      authResult = await supabase.auth.signInWithPassword({ email: fallbackEmail, password });
+    }
+
     if (authResult.error) {
       const signUpResult = await supabase.auth.signUp({
         email,
@@ -828,6 +852,7 @@
     isOwnerUser,
     signInOwner,
     sendOwnerPasswordReset,
+    sendCustomerPasswordReset,
     updateOwnerPassword,
     signOut,
     signInOrRegisterCustomer,

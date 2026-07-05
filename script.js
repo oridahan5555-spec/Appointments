@@ -166,6 +166,9 @@ const authModal = document.getElementById("authModal");
 const closeModal = document.getElementById("closeModal");
 const modalTabs = document.querySelectorAll(".modal-tab");
 const customerLoginForm = document.getElementById("customerLoginForm");
+const customerRecoveryForm = document.getElementById("customerRecoveryForm");
+const customerForgotPasswordButton = document.getElementById("customerForgotPasswordButton");
+const cancelCustomerRecoveryButton = document.getElementById("cancelCustomerRecoveryButton");
 const sellerLoginForm = document.getElementById("sellerLoginForm");
 const calendarChoiceModal = document.getElementById("calendarChoiceModal");
 const closeCalendarChoiceModal = document.getElementById("closeCalendarChoiceModal");
@@ -2566,6 +2569,7 @@ function openAuthModal(role) {
 
 function closeAuthModal() {
   authModal.classList.add("is-hidden");
+  showCustomerLoginPanel();
 }
 
 function showAuthTab(tabName) {
@@ -2575,6 +2579,24 @@ function showAuthTab(tabName) {
 
   customerLoginForm.classList.toggle("is-active", tabName === "customer");
   sellerLoginForm.classList.toggle("is-active", tabName === "seller");
+  if (tabName !== "customer") {
+    showCustomerLoginPanel();
+  }
+}
+
+function showCustomerLoginPanel() {
+  customerLoginForm?.classList.remove("is-hidden");
+  customerRecoveryForm?.classList.add("is-hidden");
+  if (customerRecoveryForm?.reset) {
+    customerRecoveryForm.reset();
+  }
+}
+
+function showCustomerRecoveryPanel() {
+  authModal.classList.remove("is-hidden");
+  showAuthTab("customer");
+  customerLoginForm?.classList.add("is-hidden");
+  customerRecoveryForm?.classList.remove("is-hidden");
 }
 
 function updateCurrentCustomer(fullName, phone) {
@@ -2870,7 +2892,13 @@ customerLoginForm.addEventListener("submit", async (event) => {
   const firstName = String(formData.get("firstName")).trim();
   const lastName = String(formData.get("lastName")).trim();
   const phone = String(formData.get("phone")).trim();
+  const email = String(formData.get("email") || "").trim().toLowerCase();
   const normalizedPhone = normalizePhoneNumber(phone);
+
+  if (!email) {
+    appUi.toast("צריך למלא אימייל כדי שאפשר יהיה לאפס סיסמה אם שוכחים.", { variant: "error" });
+    return;
+  }
 
   if (!normalizedPhone) {
     appUi.toast("צריך למלא טלפון תקין.", { variant: "error" });
@@ -2887,6 +2915,7 @@ customerLoginForm.addEventListener("submit", async (event) => {
       firstName,
       lastName,
       phone,
+      email,
       password
     });
     session.role = "customer";
@@ -2906,6 +2935,66 @@ customerLoginForm.addEventListener("submit", async (event) => {
     }
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו להתחבר.", { variant: "error" });
+  }
+});
+
+customerForgotPasswordButton?.addEventListener("click", async () => {
+  if (!supabaseEnabled) {
+    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
+    return;
+  }
+
+  const email = String(customerLoginForm?.elements?.email?.value || "").trim().toLowerCase();
+  if (!email) {
+    appUi.toast("צריך למלא אימייל כדי לשלוח קישור לאיפוס סיסמה.", { variant: "error" });
+    return;
+  }
+
+  try {
+    await supabaseApi.sendCustomerPasswordReset(email);
+    appUi.toast("שלחנו קישור לאיפוס סיסמה לאימייל שהקלדת.", { variant: "success" });
+  } catch (error) {
+    appUi.toast(error?.message || "לא הצלחנו לשלוח קישור לאיפוס סיסמה.", { variant: "error" });
+  }
+});
+
+cancelCustomerRecoveryButton?.addEventListener("click", () => {
+  showCustomerLoginPanel();
+});
+
+customerRecoveryForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  if (!supabaseEnabled) {
+    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
+    return;
+  }
+
+  const formData = new FormData(customerRecoveryForm);
+  const newPassword = String(formData.get("newPassword") || "");
+  const confirmPassword = String(formData.get("confirmPassword") || "");
+
+  if (!newPassword || !confirmPassword) {
+    appUi.toast("יש למלא את שתי הסיסמאות.", { variant: "error" });
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    appUi.toast("הסיסמאות לא תואמות.", { variant: "error" });
+    return;
+  }
+
+  try {
+    await supabaseApi.updateOwnerPassword(newPassword);
+    appUi.toast("הסיסמה עודכנה, אפשר להתחבר.", { variant: "success" });
+    await supabaseApi.signOut();
+    session.role = null;
+    session.customerPhone = null;
+    session.authUserId = null;
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showCustomerLoginPanel();
+  } catch (error) {
+    appUi.toast(error?.message || "לא הצלחנו לעדכן את הסיסמה.", { variant: "error" });
   }
 });
 
@@ -3469,7 +3558,10 @@ async function initializeApp() {
   await refreshStateFromSupabase();
   setupPersonalRealtimeSubscriptions();
 
-  supabaseApi.onAuthStateChange(async () => {
+  supabaseApi.onAuthStateChange(async (event) => {
+    if (event === "PASSWORD_RECOVERY") {
+      showCustomerRecoveryPanel();
+    }
     await refreshStateFromSupabase();
     setupPersonalRealtimeSubscriptions();
   });

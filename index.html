@@ -364,7 +364,7 @@
 
       <form id="customerLoginForm" class="auth-panel is-active">
         <h3>כניסה / הרשמה ללקוחה</h3>
-        <p class="auth-helper">בפעם הראשונה ממלאים פרטים, טלפון וסיסמה. בפעמים הבאות נכנסים עם אותו טלפון וסיסמה.</p>
+        <p class="auth-helper">בפעם הראשונה ממלאים פרטים, טלפון, אימייל וסיסמה. בפעמים הבאות אפשר להיכנס עם אותם הפרטים, ואם שוכחים סיסמה אפשר לאפס דרך האימייל.</p>
         <label class="field">
           <span>שם פרטי</span>
           <input type="text" name="firstName" required>
@@ -378,10 +378,30 @@
           <input type="tel" name="phone" required>
         </label>
         <label class="field">
+          <span>אימייל</span>
+          <input type="email" name="email" autocomplete="email" required>
+        </label>
+        <label class="field">
           <span>סיסמה</span>
           <input type="password" name="password" required>
         </label>
+        <button class="ghost-button" id="customerForgotPasswordButton" type="button">שכחתי סיסמה</button>
         <button class="primary-button" type="submit">כניסה כלקוחה</button>
+      </form>
+
+      <form id="customerRecoveryForm" class="auth-panel is-hidden">
+        <h3>בחירת סיסמה חדשה</h3>
+        <p class="auth-helper">הקלידי סיסמה חדשה פעמיים, שמרי, ואז תוכלי להיכנס שוב כלקוחה.</p>
+        <label class="field">
+          <span>סיסמה חדשה</span>
+          <input type="password" name="newPassword" required>
+        </label>
+        <label class="field">
+          <span>אימות סיסמה</span>
+          <input type="password" name="confirmPassword" required>
+        </label>
+        <button class="primary-button" type="submit">שמור סיסמה חדשה</button>
+        <button class="ghost-button" id="cancelCustomerRecoveryButton" type="button">חזרה לכניסה</button>
       </form>
 
       <form id="sellerLoginForm" class="auth-panel">
