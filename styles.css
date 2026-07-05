@@ -1938,6 +1938,45 @@ a.ghost-button {
   text-align: center;
 }
 
+.hours-mode-switch {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface-soft);
+}
+
+.hours-mode-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.hours-mode-copy strong {
+  font-size: 1rem;
+}
+
+.hours-mode-copy p {
+  margin: 0;
+  color: var(--muted-text);
+  line-height: 1.5;
+}
+
+.hours-mode-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.hours-mode-button {
+  flex: 1 1 220px;
+}
+
+.editor-row-hours.is-day-closed input {
+  opacity: 0.72;
+}
+
 .toggle-hour-button.is-open {
   border-color: #b9e3c9;
   color: var(--success);

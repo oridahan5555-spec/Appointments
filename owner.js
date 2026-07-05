@@ -47,7 +47,8 @@ const DEFAULT_DATA = {
       calendarExport: true,
       customerRescheduling: true,
       waitingList: true,
-      attendanceConfirmation: true
+      attendanceConfirmation: true,
+      workingDaysMode: "select_open_days"
     }
   },
   sellerCredentials: {
@@ -426,6 +427,29 @@ function normalizeBusiness(business) {
     ...(business?.features || {})
   };
   return normalized;
+}
+
+function getWorkingDaysMode() {
+  return state.business.features?.workingDaysMode === "select_closed_days"
+    ? "select_closed_days"
+    : "select_open_days";
+}
+
+function setWorkingDaysMode(mode) {
+  state.business.features = {
+    ...state.business.features,
+    workingDaysMode: mode === "select_closed_days" ? "select_closed_days" : "select_open_days"
+  };
+}
+
+function getWorkingDaysModeDescription() {
+  return getWorkingDaysMode() === "select_closed_days"
+    ? "בחר את הימים שבהם העסק סגור וכל השאר פתוחים"
+    : "בחר את הימים שבהם העסק פתוח";
+}
+
+function getWorkingDayStateLabel(isClosed) {
+  return isClosed ? "לא עובד" : "יום עבודה";
 }
 
 function normalizeStaff() {
@@ -2117,7 +2141,31 @@ function renderEditors() {
     `)
     .join("");
 
+  const workingDaysMode = getWorkingDaysMode();
+
   hoursEditor.innerHTML = `
+    <div class="hours-mode-switch">
+      <div class="hours-mode-copy">
+        <strong>איך להגדיר ימי עבודה?</strong>
+        <p>${getWorkingDaysModeDescription()}</p>
+      </div>
+      <div class="hours-mode-buttons">
+        <button
+          class="${workingDaysMode === "select_open_days" ? "primary-button" : "ghost-button"} hours-mode-button"
+          type="button"
+          data-working-days-mode="select_open_days"
+        >
+          אני בוחר את הימים שאני עובד
+        </button>
+        <button
+          class="${workingDaysMode === "select_closed_days" ? "primary-button" : "ghost-button"} hours-mode-button"
+          type="button"
+          data-working-days-mode="select_closed_days"
+        >
+          אני בוחר את הימים שאני לא עובד
+        </button>
+      </div>
+    </div>
     <div class="editor-row editor-row-labels" aria-hidden="true">
       <span>יום</span>
       <span>פתיחה</span>
@@ -2128,13 +2176,13 @@ function renderEditors() {
     ${[...state.workingHours]
       .sort((a, b) => a.day_of_week - b.day_of_week)
       .map((row) => `
-        <div class="editor-row editor-row-hours" data-hour-id="${row.id}">
+        <div class="editor-row editor-row-hours ${row.is_closed ? "is-day-closed" : ""}" data-hour-id="${row.id}" data-day-closed="${row.is_closed ? "true" : "false"}">
           <input type="text" value="${row.day_label}" placeholder="יום" data-hour-field="day_label">
           <input type="text" value="${row.opens_at || ""}" placeholder="10:00" data-hour-field="opens_at">
           <input type="text" value="${row.closes_at || ""}" placeholder="18:00" data-hour-field="closes_at">
           <input type="number" min="5" step="5" value="${row.slot_interval_minutes || 30}" data-hour-field="slot_interval_minutes">
           <button class="ghost-button toggle-hour-button ${row.is_closed ? "is-closed" : "is-open"}" type="button" data-hour-toggle="${row.id}">
-            ${row.is_closed ? "היום סגור" : "היום פתוח"}
+            ${getWorkingDayStateLabel(row.is_closed)}
           </button>
         </div>
       `)
@@ -2143,12 +2191,16 @@ function renderEditors() {
 }
 
 function getBusinessFeaturesFromForm() {
-  return Object.fromEntries(
-    Object.entries(BUSINESS_FEATURE_FIELDS).map(([featureName, fieldName]) => [
-      featureName,
-      Boolean(businessForm.elements[fieldName].checked)
-    ])
-  );
+  return {
+    ...state.business.features,
+    ...Object.fromEntries(
+      Object.entries(BUSINESS_FEATURE_FIELDS).map(([featureName, fieldName]) => [
+        featureName,
+        Boolean(businessForm.elements[fieldName].checked)
+      ])
+    ),
+    workingDaysMode: getWorkingDaysMode()
+  };
 }
 
 function renderBusinessFeatureEditorState() {
@@ -3096,6 +3148,14 @@ servicesForm.addEventListener("submit", (event) => {
 });
 
 hoursEditor.addEventListener("click", (event) => {
+  const modeButton = event.target.closest("[data-working-days-mode]");
+  if (modeButton) {
+    setWorkingDaysMode(modeButton.dataset.workingDaysMode);
+    saveState();
+    rerenderAll();
+    return;
+  }
+
   const button = event.target.closest("[data-hour-toggle]");
   if (!button) {
     return;
@@ -3107,10 +3167,7 @@ hoursEditor.addEventListener("click", (event) => {
   }
 
   row.is_closed = !row.is_closed;
-  if (row.is_closed) {
-    row.opens_at = null;
-    row.closes_at = null;
-  } else {
+  if (!row.is_closed) {
     row.opens_at ||= "10:00";
     row.closes_at ||= "18:00";
   }
@@ -3124,6 +3181,7 @@ hoursForm.addEventListener("submit", (event) => {
   state.workingHours = Array.from(hoursEditor.querySelectorAll("[data-hour-id]")).map((row, index) => {
     const opensAt = String(row.querySelector('[data-hour-field="opens_at"]').value).trim();
     const closesAt = String(row.querySelector('[data-hour-field="closes_at"]').value).trim();
+    const explicitlyClosed = row.dataset.dayClosed === "true";
 
     return {
       id: row.dataset.hourId,
@@ -3132,7 +3190,7 @@ hoursForm.addEventListener("submit", (event) => {
       opens_at: opensAt || null,
       closes_at: closesAt || null,
       slot_interval_minutes: Number(row.querySelector('[data-hour-field="slot_interval_minutes"]').value || 30),
-      is_closed: !opensAt || !closesAt
+      is_closed: explicitlyClosed || !opensAt || !closesAt
     };
   });
   saveState();
