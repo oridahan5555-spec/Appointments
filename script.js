@@ -401,9 +401,9 @@ let publicLoadedFromSupabase = false;
 
 function shouldPreserveRenderedBusiness() {
   return Boolean(
-    publicLoadedFromSupabase &&
-    state.business?.id &&
-    String(state.business?.name || "").trim()
+    String(brandName?.textContent || "").trim() ||
+    String(businessName?.textContent || "").trim() ||
+    (publicLoadedFromSupabase && state.business?.id && String(state.business?.name || "").trim())
   );
 }
 
