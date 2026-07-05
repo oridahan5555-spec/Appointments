@@ -96,6 +96,8 @@ revoke all on public.blocked_slots from public;
 grant select on public.business to anon, authenticated;
 grant select on public.services to anon, authenticated;
 grant select on public.working_hours to anon, authenticated;
+grant select on public.special_hours to anon, authenticated;
+grant select on public.blocked_slots to anon, authenticated;
 
 grant select, insert, update, delete on public.business to authenticated;
 grant select, insert, update, delete on public.services to authenticated;

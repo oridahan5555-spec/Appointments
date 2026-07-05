@@ -580,7 +580,7 @@
       supabase.rpc("get_public_booking_slots")
     ]);
 
-    [businessResponse, servicesResponse, hoursResponse, specialHoursResponse, blockedSlotsResponse, slotsResponse].forEach((response) => {
+    [businessResponse, servicesResponse, hoursResponse, slotsResponse].forEach((response) => {
       if (response.error) {
         throw response.error;
       }
@@ -594,8 +594,8 @@
       business: mapBusinessFromDb(businessResponse.data),
       services: mapServicesFromDb(servicesResponse.data),
       workingHours: mapWorkingHoursFromDb(hoursResponse.data),
-      specialHours: mapSpecialHoursFromDb(specialHoursResponse.data),
-      blockedSlots: mapBlockedSlotsFromDb(blockedSlotsResponse.data),
+      specialHours: specialHoursResponse.error ? [] : mapSpecialHoursFromDb(specialHoursResponse.data),
+      blockedSlots: blockedSlotsResponse.error ? [] : mapBlockedSlotsFromDb(blockedSlotsResponse.data),
       bookings: (slotsResponse.data || []).map((row) => mapBookingFromDb(row))
     };
   }
