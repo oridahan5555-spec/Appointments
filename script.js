@@ -7,22 +7,22 @@ const supabaseApi = window.AppSupabase || null;
 const supabaseEnabled = Boolean(supabaseApi?.isConfigured?.());
 const DEFAULT_OWNER_STAFF = {
   id: "staff-owner",
-  name: "׳‘׳¢׳׳× ׳”׳¢׳¡׳§",
-  role: "׳ ׳•׳×׳ ׳× ׳”׳©׳™׳¨׳•׳×",
-  initials: "׳‘",
+  name: "בעלת העסק",
+  role: "נותנת השירות",
+  initials: "ב",
   is_anyone: false
 };
 
 const DEFAULT_DATA = {
   business: {
-    name: "׳©׳ ׳”׳¢׳¡׳§ ׳©׳׳",
-    description: "׳›׳×׳‘׳™ ׳›׳׳ ׳×׳™׳׳•׳¨ ׳§׳¦׳¨ ׳¢׳ ׳”׳¢׳¡׳§ ׳©׳׳.",
-    address: "׳›׳×׳•׳‘׳× ׳”׳¢׳¡׳§",
+    name: "שם העסק שלך",
+    description: "כתבי כאן תיאור קצר על העסק שלך.",
+    address: "כתובת העסק",
     phone: "",
     instagram_url: "",
     cover_image: "",
     profile_image: "",
-    preparation_message: "׳ ׳ ׳׳”׳’׳™׳¢ ׳‘׳–׳׳. ׳׳ ׳¦׳¨׳™׳ ׳׳‘׳˜׳ ׳׳• ׳׳©׳ ׳•׳× ׳×׳•׳¨, ׳¢׳“׳›׳ ׳™ ׳׳¨׳׳©.",
+    preparation_message: "נא להגיע בזמן. אם צריך לבטל או לשנות תור, עדכני מראש.",
     features: {
       businessDescription: true,
       preparationMessage: true,
@@ -41,19 +41,19 @@ const DEFAULT_DATA = {
     password: "1234"
   },
   services: [
-    { id: "service-1", category: "׳§׳˜׳’׳•׳¨׳™׳” ׳¨׳׳©׳™׳×", name: "׳©׳™׳¨׳•׳× ׳׳“׳•׳’׳׳” 1", price: 150, duration: 60 },
-    { id: "service-2", category: "׳§׳˜׳’׳•׳¨׳™׳” ׳¨׳׳©׳™׳×", name: "׳©׳™׳¨׳•׳× ׳׳“׳•׳’׳׳” 2", price: 220, duration: 90 },
-    { id: "service-3", category: "׳§׳˜׳’׳•׳¨׳™׳” ׳ ׳•׳¡׳₪׳×", name: "׳©׳™׳¨׳•׳× ׳׳“׳•׳’׳׳” 3", price: 80, duration: 30 }
+    { id: "service-1", category: "קטגוריה ראשית", name: "שירות לדוגמה 1", price: 150, duration: 60 },
+    { id: "service-2", category: "קטגוריה ראשית", name: "שירות לדוגמה 2", price: 220, duration: 90 },
+    { id: "service-3", category: "קטגוריה נוספת", name: "שירות לדוגמה 3", price: 80, duration: 30 }
   ],
   staff: [DEFAULT_OWNER_STAFF],
   workingHours: [
-    { id: "hours-0", day_of_week: 0, day_label: "׳¨׳׳©׳•׳", opens_at: "09:00", closes_at: "18:00", slot_interval_minutes: 30, is_closed: false },
-    { id: "hours-1", day_of_week: 1, day_label: "׳©׳ ׳™", opens_at: "09:00", closes_at: "18:00", slot_interval_minutes: 30, is_closed: false },
-    { id: "hours-2", day_of_week: 2, day_label: "׳©׳׳™׳©׳™", opens_at: "09:00", closes_at: "18:00", slot_interval_minutes: 30, is_closed: false },
-    { id: "hours-3", day_of_week: 3, day_label: "׳¨׳‘׳™׳¢׳™", opens_at: "09:00", closes_at: "18:00", slot_interval_minutes: 30, is_closed: false },
-    { id: "hours-4", day_of_week: 4, day_label: "׳—׳׳™׳©׳™", opens_at: "09:00", closes_at: "18:00", slot_interval_minutes: 30, is_closed: false },
-    { id: "hours-5", day_of_week: 5, day_label: "׳©׳™׳©׳™", opens_at: "09:00", closes_at: "14:00", slot_interval_minutes: 30, is_closed: false },
-    { id: "hours-6", day_of_week: 6, day_label: "׳©׳‘׳×", opens_at: null, closes_at: null, slot_interval_minutes: 30, is_closed: true }
+    { id: "hours-0", day_of_week: 0, day_label: "ראשון", opens_at: "09:00", closes_at: "18:00", slot_interval_minutes: 30, is_closed: false },
+    { id: "hours-1", day_of_week: 1, day_label: "שני", opens_at: "09:00", closes_at: "18:00", slot_interval_minutes: 30, is_closed: false },
+    { id: "hours-2", day_of_week: 2, day_label: "שלישי", opens_at: "09:00", closes_at: "18:00", slot_interval_minutes: 30, is_closed: false },
+    { id: "hours-3", day_of_week: 3, day_label: "רביעי", opens_at: "09:00", closes_at: "18:00", slot_interval_minutes: 30, is_closed: false },
+    { id: "hours-4", day_of_week: 4, day_label: "חמישי", opens_at: "09:00", closes_at: "18:00", slot_interval_minutes: 30, is_closed: false },
+    { id: "hours-5", day_of_week: 5, day_label: "שישי", opens_at: "09:00", closes_at: "14:00", slot_interval_minutes: 30, is_closed: false },
+    { id: "hours-6", day_of_week: 6, day_label: "שבת", opens_at: null, closes_at: null, slot_interval_minutes: 30, is_closed: true }
   ],
   specialHours: [],
   blockedSlots: [],
@@ -399,14 +399,14 @@ let publicSupabaseErrorMessage = "";
 let publicSupabaseErrorTimestamp = 0;
 let publicLoadedFromSupabase = false;
 
-function showPublicLoadingState(message = "׳˜׳•׳¢׳ ׳ ׳×׳•׳ ׳™ ׳¢׳¡׳§...") {
+function showPublicLoadingState(message = "טוען נתוני עסק...") {
   brandName.textContent = message;
   businessName.textContent = message;
-  businessDescription.textContent = "׳׳•׳©׳ ׳׳× ׳©׳ ׳”׳¢׳¡׳§, ׳”׳©׳™׳¨׳•׳×׳™׳ ׳•׳”׳©׳¢׳•׳× ׳™׳©׳™׳¨׳•׳× ׳-Supabase.";
+  businessDescription.textContent = "מושך את שם העסק, השירותים והשעות ישירות מ-Supabase.";
 }
 
 function showPublicSupabaseError(error) {
-  const message = String(error?.message || "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳˜׳¢׳•׳ ׳׳× ׳ ׳×׳•׳ ׳™ ׳”׳¢׳¡׳§ ׳-Supabase.");
+  const message = String(error?.message || "לא הצלחנו לטעון את נתוני העסק מ-Supabase.");
   const now = Date.now();
   if (message === publicSupabaseErrorMessage && now - publicSupabaseErrorTimestamp < 5000) {
     return;
@@ -414,8 +414,8 @@ function showPublicSupabaseError(error) {
 
   publicSupabaseErrorMessage = message;
   publicSupabaseErrorTimestamp = now;
-  brandName.textContent = "׳©׳’׳™׳׳× ׳¡׳ ׳›׳¨׳•׳";
-  businessName.textContent = "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳˜׳¢׳•׳ ׳׳× ׳”׳¢׳¡׳§";
+  brandName.textContent = "שגיאת סנכרון";
+  businessName.textContent = "לא הצלחנו לטעון את העסק";
   businessDescription.textContent = message;
   appUi.toast(message, { variant: "error" });
 }
