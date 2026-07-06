@@ -1818,6 +1818,34 @@ a.ghost-button {
   margin-top: 14px;
 }
 
+.special-hours-mode-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.special-hours-mode-button {
+  flex: 1 1 220px;
+}
+
+.special-hours-mode-help {
+  color: var(--muted-text);
+  line-height: 1.5;
+}
+
+.special-hours-warning {
+  padding: 12px 14px;
+  border: 1px solid #f0d5a5;
+  border-radius: 14px;
+  background: #fff8ea;
+  color: #9a6400;
+  line-height: 1.5;
+}
+
+.special-hours-warning.is-hidden {
+  display: none;
+}
+
 .blocked-slot-form-grid,
 .special-hours-form-grid {
   display: grid;

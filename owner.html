@@ -329,15 +329,30 @@
           </section>
 
           <section class="admin-card admin-card-wide owner-section-anchor" id="ownerSpecialHoursSection">
-            <h3>שעות מיוחדות לתאריך מסוים</h3>
+            <h3>חריגים בתאריכים</h3>
             <p class="admin-helper">
-              כאן מגדירים חריגה חד פעמית ליום מסוים. למשל חג, חופשה, או יום שבו עובדים בשעות אחרות מהרגיל.
+              כאן מגדירים תאריך חריג שגובר על ימי השבוע הרגילים. אפשר לסגור את העסק בתאריך מסוים, או לקבוע לאותו תאריך שעות מיוחדות.
             </p>
 
             <form id="specialHoursForm" class="special-hours-form">
+              <div class="special-hours-mode-switch" role="group" aria-label="סוג החריג">
+                <button class="primary-button special-hours-mode-button" type="button" data-special-mode="closed">
+                  העסק סגור בתאריך הזה
+                </button>
+                <button class="ghost-button special-hours-mode-button" type="button" data-special-mode="custom">
+                  שעות מיוחדות בתאריך הזה
+                </button>
+              </div>
+
+              <div class="special-hours-mode-help" id="specialHoursModeHelp">
+                בחרי אם לחסום את כל היום או להגדיר שעות אחרות רק לתאריך הזה.
+              </div>
+
+              <div class="special-hours-warning is-hidden" id="specialHoursWarning"></div>
+
               <div class="special-hours-form-grid">
                 <label class="field">
-                  <span>תאריך מיוחד</span>
+                  <span>תאריך חריג</span>
                   <input type="date" name="specialDate" required>
                 </label>
 
@@ -356,21 +371,15 @@
                   <input type="number" name="specialInterval" min="5" step="5" value="30">
                 </label>
 
-                <label class="field special-hours-closed-field">
-                  <span>מצב מיוחד</span>
-                  <label class="checkbox-field">
-                    <input type="checkbox" name="specialClosed">
-                    <span>היום הזה סגור</span>
-                  </label>
-                </label>
-
                 <label class="field special-hours-note-field">
                   <span>הערה קצרה (לא חובה)</span>
                   <input type="text" name="specialNote" placeholder="למשל ערב חג, חופשה או יום קצר">
                 </label>
+
+                <input type="checkbox" name="specialClosed" hidden>
               </div>
 
-              <button class="primary-button" type="submit">שמירת שעות מיוחדות</button>
+              <button class="primary-button" type="submit">הוסף תאריך חריג</button>
             </form>
 
             <div id="specialHoursList" class="cards-list special-hours-list"></div>

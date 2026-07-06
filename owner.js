@@ -138,6 +138,7 @@ const hoursForm = document.getElementById("hoursForm");
 const hoursEditor = document.getElementById("hoursEditor");
 const specialHoursForm = document.getElementById("specialHoursForm");
 const specialHoursList = document.getElementById("specialHoursList");
+const specialHoursWarning = document.getElementById("specialHoursWarning");
 const blockedSlotsForm = document.getElementById("blockedSlotsForm");
 const blockedSlotsList = document.getElementById("blockedSlotsList");
 const resetBusinessTemplateButton = document.getElementById("resetBusinessTemplateButton");
@@ -2234,9 +2235,58 @@ function renderBusinessFeatureEditorState() {
 
 function setSpecialHoursClosedState() {
   const isClosed = Boolean(specialHoursForm.elements.specialClosed.checked);
+  specialHoursForm.querySelectorAll("[data-special-mode]").forEach((button) => {
+    const isActive = button.dataset.specialMode === (isClosed ? "closed" : "custom");
+    button.classList.toggle("primary-button", isActive);
+    button.classList.toggle("ghost-button", !isActive);
+  });
   specialHoursForm.elements.specialOpen.disabled = isClosed;
   specialHoursForm.elements.specialClose.disabled = isClosed;
   specialHoursForm.elements.specialInterval.disabled = isClosed;
+}
+
+function setSpecialHoursMode(mode) {
+  specialHoursForm.elements.specialClosed.checked = mode === "closed";
+  setSpecialHoursClosedState();
+}
+
+function getActiveBookingsCountForDate(dateValue) {
+  return state.bookings.filter((booking) => booking.booking_date === dateValue && ["pending", "approved"].includes(booking.status)).length;
+}
+
+function getBookingsOutsideSpecialRange(dateValue, opensAt, closesAt) {
+  const openMinutes = parseTimeToMinutes(opensAt);
+  const closeMinutes = parseTimeToMinutes(closesAt);
+  return state.bookings.filter((booking) => {
+    if (booking.booking_date !== dateValue || !["pending", "approved"].includes(booking.status)) {
+      return false;
+    }
+
+    const bookingStart = parseTimeToMinutes(String(booking.booking_time || "").slice(0, 5));
+    const bookingEnd = bookingStart + Number(booking.duration_minutes || 0);
+    return bookingStart < openMinutes || bookingEnd > closeMinutes;
+  });
+}
+
+function renderSpecialHoursWarning(dateValue, isClosed, opensAt, closesAt) {
+  if (!specialHoursWarning || !dateValue) {
+    return;
+  }
+
+  let message = "";
+  const activeBookingsCount = getActiveBookingsCountForDate(dateValue);
+
+  if (isClosed && activeBookingsCount > 0) {
+    message = `יש כבר ${activeBookingsCount} תורים קיימים בתאריך הזה. הסגירה תחסום רק תורים חדשים ולא תמחק תורים שכבר נקבעו.`;
+  } else if (!isClosed && opensAt && closesAt) {
+    const conflictingBookings = getBookingsOutsideSpecialRange(dateValue, opensAt, closesAt);
+    if (conflictingBookings.length > 0) {
+      message = `יש כבר ${conflictingBookings.length} תורים מחוץ לשעות המיוחדות שבחרת. השעות החדשות יחולו רק על תורים חדשים.`;
+    }
+  }
+
+  specialHoursWarning.textContent = message;
+  specialHoursWarning.classList.toggle("is-hidden", !message);
 }
 
 function renderSpecialHoursManager() {
@@ -2258,9 +2308,10 @@ function renderSpecialHoursManager() {
   closedField.checked = Boolean(specialDay?.is_closed);
   noteField.value = specialDay?.note || "";
   setSpecialHoursClosedState();
+  renderSpecialHoursWarning(selectedDate, Boolean(closedField.checked), String(openField.value || "").trim(), String(closeField.value || "").trim());
 
   if (!state.specialHours.length) {
-    specialHoursList.innerHTML = '<div class="notice-box">עדיין אין שעות מיוחדות. ברגע שתשמרי תאריך מיוחד, הוא יופיע כאן.</div>';
+    specialHoursList.innerHTML = '<div class="notice-box">עדיין אין חריגים בתאריכים. ברגע שתוסיפי תאריך חריג, הוא יופיע כאן.</div>';
     return;
   }
 
@@ -2270,11 +2321,11 @@ function renderSpecialHoursManager() {
       <article class="booking-card status-card-special">
         <div class="booking-card-head">
           <strong>${formatDisplayDate(item.special_date)}</strong>
-          <span class="status-pill status-special">${item.is_closed ? "יום סגור מיוחד" : "שעות מיוחדות"}</span>
+          <span class="status-pill status-special">${item.is_closed ? "העסק סגור" : "שעות מיוחדות"}</span>
         </div>
         <div class="booking-meta">
           <span>${item.is_closed ? "לא ניתן לקבוע תורים ביום הזה" : `${item.opens_at} - ${item.closes_at}`}</span>
-          <span>${item.is_closed ? "היום הזה סגור באופן מיוחד" : `כל ${item.slot_interval_minutes} דקות`}</span>
+          <span>${item.is_closed ? "התאריך הזה חסום ללקוחות" : `כל ${item.slot_interval_minutes} דקות`}</span>
         </div>
         ${item.note ? `<div class="booking-note">הערה: ${item.note}</div>` : ""}
         <div class="booking-card-actions">
@@ -2673,8 +2724,40 @@ specialHoursForm.elements.specialDate.addEventListener("change", () => {
   renderSellerCalendar();
 });
 
+specialHoursForm.addEventListener("click", (event) => {
+  const modeButton = event.target.closest("[data-special-mode]");
+  if (!modeButton) {
+    return;
+  }
+
+  setSpecialHoursMode(modeButton.dataset.specialMode);
+  renderSpecialHoursWarning(
+    String(specialHoursForm.elements.specialDate.value || "").trim(),
+    Boolean(specialHoursForm.elements.specialClosed.checked),
+    String(specialHoursForm.elements.specialOpen.value || "").trim(),
+    String(specialHoursForm.elements.specialClose.value || "").trim()
+  );
+});
+
 specialHoursForm.elements.specialClosed.addEventListener("change", () => {
   setSpecialHoursClosedState();
+  renderSpecialHoursWarning(
+    String(specialHoursForm.elements.specialDate.value || "").trim(),
+    Boolean(specialHoursForm.elements.specialClosed.checked),
+    String(specialHoursForm.elements.specialOpen.value || "").trim(),
+    String(specialHoursForm.elements.specialClose.value || "").trim()
+  );
+});
+
+["specialOpen", "specialClose", "specialInterval"].forEach((fieldName) => {
+  specialHoursForm.elements[fieldName].addEventListener("input", () => {
+    renderSpecialHoursWarning(
+      String(specialHoursForm.elements.specialDate.value || "").trim(),
+      Boolean(specialHoursForm.elements.specialClosed.checked),
+      String(specialHoursForm.elements.specialOpen.value || "").trim(),
+      String(specialHoursForm.elements.specialClose.value || "").trim()
+    );
+  });
 });
 
 specialHoursForm.addEventListener("submit", (event) => {
@@ -2702,6 +2785,15 @@ specialHoursForm.addEventListener("submit", (event) => {
       appUi.toast("שעת הסגירה חייבת להיות אחרי שעת הפתיחה.", { variant: "error" });
       return;
     }
+  }
+
+  renderSpecialHoursWarning(specialDate, specialClosed, specialOpen, specialClose);
+
+  const activeBookingsCount = getActiveBookingsCountForDate(specialDate);
+  if (specialClosed && activeBookingsCount > 0) {
+    appUi.toast("יש כבר תורים בתאריך הזה. החריג ייחסם ללקוחות חדשים בלבד.", { variant: "warning" });
+  } else if (!specialClosed && specialOpen && specialClose && getBookingsOutsideSpecialRange(specialDate, specialOpen, specialClose).length > 0) {
+    appUi.toast("יש כבר תורים מחוץ לשעות המיוחדות. השעות החדשות יחולו רק על תורים חדשים.", { variant: "warning" });
   }
 
   state.specialHours = normalizeSpecialHours([
