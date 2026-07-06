@@ -2649,8 +2649,8 @@ function renderEditors() {
         .map((row) => `
           <div class="editor-row editor-row-hours" data-hour-id="${row.id}">
             <input type="text" value="${row.day_label}" placeholder="׳™׳•׳" data-hour-field="day_label">
-            <input type="text" value="${row.opens_at || ""}" placeholder="׳©׳¢׳× ׳₪׳×׳™׳—׳”, ׳׳׳©׳ 10:00" data-hour-field="opens_at">
-            <input type="text" value="${row.closes_at || ""}" placeholder="׳©׳¢׳× ׳¡׳’׳™׳¨׳”, ׳׳׳©׳ 18:00" data-hour-field="closes_at">
+            <input type="time" value="${row.opens_at || ""}" data-hour-field="opens_at">
+            <input type="time" value="${row.closes_at || ""}" data-hour-field="closes_at">
             <input type="number" min="5" step="5" value="${row.slot_interval_minutes || 30}" title="׳׳¡׳₪׳¨ ׳”׳“׳§׳•׳× ׳‘׳™׳ ׳×׳—׳™׳׳× ׳×׳•׳¨ ׳׳—׳“ ׳׳×׳—׳™׳׳× ׳”׳×׳•׳¨ ׳”׳‘׳" placeholder="׳“׳§׳•׳× ׳‘׳™׳ ׳×׳•׳¨׳™׳" data-hour-field="slot_interval_minutes">
             <button class="ghost-button toggle-hour-button ${row.is_closed ? "is-closed" : "is-open"}" type="button" data-hour-toggle="${row.id}">
               ${row.is_closed ? "׳”׳™׳•׳ ׳¡׳’׳•׳¨" : "׳”׳™׳•׳ ׳₪׳×׳•׳—"}
