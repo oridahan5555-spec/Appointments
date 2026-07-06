@@ -173,9 +173,11 @@ try {
     const navigation = await client.evaluate(`(() => {
       document.querySelector('.service-card').click();
       goToStaffStep.click();
-      const reachedStaff = uiState.wizardStep === 2;
-      document.querySelector('.staff-card').click();
-      goToScheduleStep.click();
+      const skippedSingleStaff = shouldSkipStaffStep() && uiState.wizardStep === 3;
+      if (!shouldSkipStaffStep()) {
+        document.querySelector('.staff-card').click();
+        goToScheduleStep.click();
+      }
       const reachedSchedule = uiState.wizardStep === 3;
       const firstModeDefault = uiState.scheduleMode === 'firstAvailable' && !firstAvailablePanel.classList.contains('is-hidden');
       scheduleModeSwitch.querySelector('[data-schedule-mode="calendar"]').click();
@@ -192,8 +194,10 @@ try {
       const nextWorked = uiState.selectedMonthKey !== monthBefore;
       calendarPrevButton.click();
       backToStaffStep.click();
-      const backWorked = uiState.wizardStep === 2;
-      return { reachedStaff, reachedSchedule, firstModeDefault, switchedToCalendar, firstAvailableSelected, nextWorked, backWorked };
+      const backWorked = uiState.wizardStep === 1;
+      const visibleSteps = [...wizardSteps].filter((step) => !step.classList.contains('is-hidden'));
+      const compactSteps = visibleSteps.length === 3 && visibleSteps.map((step) => step.querySelector('.wizard-step-number').textContent).join(',') === '1,2,3';
+      return { skippedSingleStaff, reachedSchedule, firstModeDefault, switchedToCalendar, firstAvailableSelected, nextWorked, backWorked, compactSteps };
     })()`);
     assert(Object.values(navigation).every(Boolean), `Wizard navigation failed: ${JSON.stringify(navigation)}`);
   });

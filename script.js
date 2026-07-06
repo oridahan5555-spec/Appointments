@@ -917,6 +917,19 @@ function getRealStaffMembers() {
   return state.staff.filter((staff) => !staff.is_anyone);
 }
 
+function shouldSkipStaffStep() {
+  return getRealStaffMembers().length === 1;
+}
+
+function selectOnlyStaffMember() {
+  const staffMembers = getRealStaffMembers();
+  if (staffMembers.length === 1) {
+    uiState.selectedStaffId = staffMembers[0].id;
+    return true;
+  }
+  return false;
+}
+
 function getCurrentCustomer() {
   if (!session.customerPhone) {
     return null;
@@ -1161,19 +1174,34 @@ function renderBusiness() {
 }
 
 function renderWizardSteps() {
+  const skipStaff = shouldSkipStaffStep();
+  const visibleSteps = skipStaff ? [1, 3, 4] : [1, 2, 3, 4];
+  const currentPosition = visibleSteps.indexOf(uiState.wizardStep);
+  document.getElementById("wizardSteps")?.classList.toggle("is-three-steps", skipStaff);
+
   wizardSteps.forEach((step) => {
     const stepNumber = Number(step.dataset.stepIndicator);
+    const position = visibleSteps.indexOf(stepNumber);
+    step.classList.toggle("is-hidden", position === -1);
     step.classList.toggle("is-active", stepNumber === uiState.wizardStep);
-    step.classList.toggle("is-complete", stepNumber < uiState.wizardStep);
+    step.classList.toggle("is-complete", position !== -1 && position < currentPosition);
+    const numberElement = step.querySelector(".wizard-step-number");
+    if (numberElement && position !== -1) {
+      numberElement.textContent = String(position + 1);
+    }
   });
+
+  goToStaffStep.textContent = skipStaff ? "המשך לבחירת תאריך" : "המשך לבחירת צוות";
+  backToStaffStep.textContent = skipStaff ? "חזרה לבחירת שירות" : "חזרה לבחירת צוות";
 }
 
 function showWizardStep(stepNumber) {
-  uiState.wizardStep = stepNumber;
-  servicesStep.classList.toggle("is-active", stepNumber === 1);
-  staffStep.classList.toggle("is-active", stepNumber === 2);
-  scheduleStep.classList.toggle("is-active", stepNumber === 3);
-  detailsStep.classList.toggle("is-active", stepNumber === 4);
+  const resolvedStep = stepNumber === 2 && shouldSkipStaffStep() ? 3 : stepNumber;
+  uiState.wizardStep = resolvedStep;
+  servicesStep.classList.toggle("is-active", resolvedStep === 1);
+  staffStep.classList.toggle("is-active", resolvedStep === 2);
+  scheduleStep.classList.toggle("is-active", resolvedStep === 3);
+  detailsStep.classList.toggle("is-active", resolvedStep === 4);
   renderWizardSteps();
 }
 
@@ -2053,6 +2081,9 @@ function ensureServiceSelected() {
 }
 
 function ensureStaffSelected() {
+  if (selectOnlyStaffMember()) {
+    return true;
+  }
   if (getSelectedStaff()) {
     return true;
   }
@@ -2433,6 +2464,10 @@ goToStaffStep.addEventListener("click", () => {
   if (!ensureServiceSelected()) {
     return;
   }
+  if (selectOnlyStaffMember()) {
+    goToStep(3);
+    return;
+  }
   goToStep(2);
 });
 
@@ -2445,7 +2480,7 @@ goToScheduleStep.addEventListener("click", () => {
   goToStep(3);
 });
 
-backToStaffStep.addEventListener("click", () => goToStep(2));
+backToStaffStep.addEventListener("click", () => goToStep(shouldSkipStaffStep() ? 1 : 2));
 
 goToDetailsStep.addEventListener("click", () => {
   if (!ensureServiceSelected() || !ensureStaffSelected() || !ensureScheduleSelected()) {

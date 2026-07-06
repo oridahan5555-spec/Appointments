@@ -20,7 +20,7 @@
       <span>מערכת תורים לעסק</span>
     </div>
     <div class="topbar-actions">
-      <button class="ghost-button" id="openCustomerLogin" type="button">התחברות לקוחה</button>
+      <button class="ghost-button" id="openCustomerLogin" type="button">חשבון לקוח</button>
       <button class="primary-button small-button" id="openSellerLogin" type="button">התחברות בעלת העסק</button>
       <button class="ghost-button is-hidden" id="logoutButton" type="button">התנתקות</button>
       <a class="primary-button small-button is-hidden" id="returnToOwnerButton" href="owner.html">חזרה לעריכת האתר</a>
@@ -68,7 +68,7 @@
     <section class="wizard-card">
       <div class="section-head">
         <h2>קביעת תור</h2>
-        <p>הזרימה בנויה לפי שלבים, כמו אפליקציית תורים: בוחרים שירות, צוות, תאריך ושעה ואז מאשרים.</p>
+        <p>הזרימה בנויה לפי שלבים: בוחרים שירות, תאריך ושעה ואז מאשרים.</p>
       </div>
 
       <ol class="wizard-steps" id="wizardSteps" aria-label="שלבי קביעת תור">
@@ -264,7 +264,7 @@
     <section class="panel-card is-hidden" id="sellerPanel">
       <div class="section-head">
         <h2>ניהול העסק</h2>
-        <p>האזור הזה מיועד לבעלת העסק בלבד, וכל שינוי בו נשמר באמת בדפדפן המקומי.</p>
+        <p>האזור הזה מיועד לבעלת העסק בלבד, והנתונים נשמרים בצורה מאובטחת ב־Supabase ומסתנכרנים בין מכשירים.</p>
       </div>
 
       <div class="admin-grid">
@@ -368,20 +368,8 @@
       </div>
 
       <form id="customerLoginForm" class="auth-panel is-active">
-        <h3>כניסה / הרשמה ללקוחה</h3>
-        <p class="auth-helper">בפעם הראשונה ממלאים פרטים, טלפון, אימייל וסיסמה. בפעמים הבאות אפשר להיכנס עם אותם הפרטים, ואם שוכחים סיסמה אפשר לאפס דרך האימייל.</p>
-        <label class="field">
-          <span>שם פרטי</span>
-          <input type="text" name="firstName" required>
-        </label>
-        <label class="field">
-          <span>שם משפחה</span>
-          <input type="text" name="lastName" required>
-        </label>
-        <label class="field">
-          <span>טלפון</span>
-          <input type="tel" name="phone" required>
-        </label>
+        <h3>כניסה ללקוחה קיימת</h3>
+        <p class="auth-helper">התחברי עם האימייל והסיסמה של חשבון הלקוח שלך.</p>
         <label class="field">
           <span>אימייל</span>
           <input type="email" name="email" autocomplete="email" required>
@@ -391,7 +379,7 @@
           <input type="password" name="password" required>
         </label>
         <button class="ghost-button" id="customerForgotPasswordButton" type="button">שכחתי סיסמה</button>
-        <button class="primary-button" type="submit">כניסה כלקוחה</button>
+        <button class="primary-button" type="submit">כניסה</button>
       </form>
 
       <form id="customerRecoveryForm" class="auth-panel is-hidden">
