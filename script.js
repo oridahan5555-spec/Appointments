@@ -647,19 +647,19 @@ function restoreRememberedCustomerSession() {
 function normalizeBusiness(business) {
   const normalized = { ...business };
 
-  if (!normalized.name || normalized.name === "׳©׳ ׳”׳¢׳¡׳§") {
+  if (!normalized.name) {
     normalized.name = DEFAULT_DATA.business.name;
   }
 
-  if (!normalized.description || normalized.description === "׳×׳™׳׳•׳¨ ׳§׳¦׳¨ ׳©׳ ׳”׳¢׳¡׳§." || normalized.description === "׳׳ ׳™׳§׳•׳¨, ׳’'׳ ׳•׳‘׳ ׳™׳™׳” ׳‘׳׳•׳•׳™׳¨׳” ׳ ׳§׳™׳™׳”, ׳¨׳’׳•׳¢׳” ׳•׳׳“׳•׳™׳§׳×.") {
+  if (!normalized.description) {
     normalized.description = DEFAULT_DATA.business.description;
   }
 
-  if (!normalized.address || normalized.address === "׳›׳×׳•׳‘׳× ׳”׳¢׳¡׳§" || normalized.address === "׳ ׳—׳ ׳¦׳׳׳•׳ 12") {
+  if (!normalized.address) {
     normalized.address = DEFAULT_DATA.business.address;
   }
 
-  if (!normalized.phone || normalized.phone === "058-560-9500") {
+  if (!normalized.phone) {
     normalized.phone = DEFAULT_DATA.business.phone;
   }
 
