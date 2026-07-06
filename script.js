@@ -3370,6 +3370,25 @@ bookingForm.addEventListener("submit", async (event) => {
       showBookingSuccess(newBooking);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (error) {
+    const isSlotConflict = error?.code === "23P01"
+      || /overlap|conflict|already.*booked|כבר.*נלקח/i.test(String(error?.message || ""));
+
+    if (supabaseEnabled) {
+      try {
+        await refreshStateFromSupabase();
+      } catch (refreshError) {
+        console.warn("Could not refresh booking availability", refreshError);
+      }
+    }
+
+    if (isSlotConflict) {
+      uiState.selectedTime = "";
+      appUi.toast("מצטערים, התור הזה כבר נלקח. אנא בחרי תור אחר.", { variant: "error" });
+      goToStep(3);
+    } else {
+      appUi.toast("שגיאה בשמירת התור. נסי שוב.", { variant: "error" });
+    }
   } finally {
     uiState.isBookingSubmitting = false;
     rerenderAll();
