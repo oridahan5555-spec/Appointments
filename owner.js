@@ -565,7 +565,7 @@ function normalizeNotifications(notifications) {
       title: String(notification?.title || "התראה חדשה").trim(),
       message: String(notification?.message || "").trim(),
       created_at: String(notification?.created_at || new Date().toISOString()),
-      read: Boolean(notification?.read ?? notification?.is_read),
+      is_read: Boolean(notification?.is_read ?? notification?.read),
       user_id: String(notification?.user_id || notification?.userId || "").trim(),
       type: String(notification?.type || "general").trim()
     }))

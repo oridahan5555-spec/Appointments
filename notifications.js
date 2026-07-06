@@ -25,7 +25,7 @@
       title: String(item?.title || "התראה חדשה").trim(),
       message: String(item?.message || "").trim(),
       created_at: String(item?.created_at || new Date().toISOString()),
-      read: Boolean(item?.read ?? item?.is_read),
+      is_read: Boolean(item?.is_read ?? item?.read),
       user_id: String(item?.user_id || item?.userId || "").trim(),
       type: String(item?.type || "general").trim()
     };
@@ -352,7 +352,7 @@
 
     function renderList() {
       const notifications = getCurrentUserNotifications();
-      const unreadCount = notifications.filter((notification) => !notification.read).length;
+      const unreadCount = notifications.filter((notification) => !notification.is_read).length;
 
       badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
       badge.classList.toggle("is-hidden", unreadCount === 0);
@@ -375,7 +375,7 @@
 
       list.innerHTML = notifications
         .map((notification) => `
-          <article class="notification-item ${notification.read ? "" : "is-unread"}" data-notification-id="${escapeHtml(notification.id)}">
+          <article class="notification-item ${notification.is_read ? "" : "is-unread"}" data-notification-id="${escapeHtml(notification.id)}">
             <div class="notification-item-main">
               <div class="notification-item-topline">
                 <span class="notification-type">${escapeHtml(getTypeLabel(notification.type))}</span>
@@ -386,7 +386,7 @@
             </div>
             <div class="notification-actions">
               ${
-                notification.read
+                notification.is_read
                   ? ""
                   : `<button class="ghost-button" type="button" data-notification-action="read" data-notification-id="${escapeHtml(notification.id)}">נקרא</button>`
               }
@@ -412,7 +412,7 @@
       const currentUserId = getCurrentUserId();
       const notifications = getAllNotifications().map((notification) => {
         if (notification.id === notificationId && notification.user_id === currentUserId) {
-          return { ...notification, read: true };
+          return { ...notification, is_read: true };
         }
 
         return notification;
@@ -430,7 +430,7 @@
       const currentUserId = getCurrentUserId();
       const notifications = getAllNotifications().map((notification) => {
         if (notification.user_id === currentUserId) {
-          return { ...notification, read: true };
+          return { ...notification, is_read: true };
         }
 
         return notification;
@@ -485,7 +485,7 @@
         ...data,
         id: data?.id || createNotificationId(),
         created_at: data?.created_at || new Date().toISOString(),
-        read: false
+        is_read: false
       });
 
       if (!notification.user_id) {
@@ -529,7 +529,7 @@
 
     function showNewBrowserNotifications() {
       getCurrentUserNotifications()
-        .filter((notification) => !notification.read && !browserSeenIds.has(notification.id))
+        .filter((notification) => !notification.is_read && !browserSeenIds.has(notification.id))
         .forEach((notification) => {
           browserSeenIds.add(notification.id);
           showBrowserNotification(notification);

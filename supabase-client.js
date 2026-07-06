@@ -282,7 +282,7 @@
       message: String(item?.message || "").trim(),
       user_id: String(item?.user_id || "").trim(),
       type: String(item?.type || "general").trim(),
-      is_read: Boolean(item?.read ?? item?.is_read),
+      is_read: Boolean(item?.is_read ?? item?.read),
       created_at: item?.created_at || undefined
     };
   }
@@ -293,7 +293,7 @@
       title: row.title || "",
       message: row.message || "",
       created_at: row.created_at || new Date().toISOString(),
-      read: Boolean(row.is_read),
+      is_read: Boolean(row.is_read),
       user_id: row.user_id || "",
       type: row.type || "general"
     };
