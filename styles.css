@@ -4,6 +4,10 @@
   --surface-soft: #faf8fc;
 }
 
+html.app-booting body {
+  visibility: hidden;
+}
+
   .app-ui-message-layer {
     position: fixed;
     inset: 0;

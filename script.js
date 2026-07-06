@@ -400,6 +400,10 @@ let publicSupabaseErrorMessage = "";
 let publicSupabaseErrorTimestamp = 0;
 let publicLoadedFromSupabase = false;
 
+function revealPublicApp() {
+  document.documentElement.classList.remove("app-booting");
+}
+
 function shouldPreserveRenderedBusiness() {
   return Boolean(
     String(brandName?.textContent || "").trim() ||
@@ -3194,36 +3198,40 @@ window.addEventListener("storage", (event) => {
 });
 
 async function initializeApp() {
-  if (!supabaseEnabled) {
-    restoreRememberedCustomerSession();
-    notificationCenter?.rememberCurrentNotifications();
-    rerenderAll();
-    showWizardStep(1);
-    return;
-  }
-
-  showPublicLoadingState();
-  setupPublicRealtimeSubscriptions();
   try {
-    await refreshStateFromSupabase();
-    setupPersonalRealtimeSubscriptions();
-    notificationCenter?.rememberCurrentNotifications();
-    showWizardStep(1);
-  } catch (error) {
-    clearRealtimeSubscriptions(personalRealtimeCleanups);
-  }
-
-  supabaseApi.onAuthStateChange(async (event) => {
-    if (event === "PASSWORD_RECOVERY") {
-      showCustomerRecoveryPanel();
+    if (!supabaseEnabled) {
+      restoreRememberedCustomerSession();
+      notificationCenter?.rememberCurrentNotifications();
+      rerenderAll();
+      showWizardStep(1);
+      return;
     }
+
+    showPublicLoadingState();
+    setupPublicRealtimeSubscriptions();
     try {
       await refreshStateFromSupabase();
       setupPersonalRealtimeSubscriptions();
+      notificationCenter?.rememberCurrentNotifications();
+      showWizardStep(1);
     } catch (error) {
       clearRealtimeSubscriptions(personalRealtimeCleanups);
     }
-  });
+
+    supabaseApi.onAuthStateChange(async (event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        showCustomerRecoveryPanel();
+      }
+      try {
+        await refreshStateFromSupabase();
+        setupPersonalRealtimeSubscriptions();
+      } catch (error) {
+        clearRealtimeSubscriptions(personalRealtimeCleanups);
+      }
+    });
+  } finally {
+    revealPublicApp();
+  }
 }
 
 void initializeApp();
