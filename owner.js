@@ -53,7 +53,7 @@ const DEFAULT_DATA = {
   },
   sellerCredentials: {
     username: "admin",
-    password: "1234"
+    password: "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
   },
   services: [
     { id: "service-1", category: "קטגוריה ראשית", name: "שירות לדוגמה 1", price: 150, duration_minutes: 60 },
@@ -1785,7 +1785,18 @@ ownerLoginForm.addEventListener("submit", async (event) => {
   const password = String(formData.get("password"));
 
   if (!supabaseEnabled) {
-    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
+    const validPassword = username === state.sellerCredentials.username
+      && await verifyStoredPassword(password, state.sellerCredentials.password, (passwordHash) => {
+        state.sellerCredentials.password = passwordHash;
+        saveState();
+      });
+    if (!validPassword) {
+      appUi.toast("פרטי הכניסה לא תקינים.", { variant: "error" });
+      return;
+    }
+    rememberSellerSession();
+    sessionStorage.setItem(SELLER_SESSION_KEY, "1");
+    showOwnerLayout();
     return;
   }
 
@@ -2493,6 +2504,8 @@ sellerCredentialsForm.addEventListener("submit", async (event) => {
         email: username,
         password
       });
+    } else if (!supabaseEnabled && password) {
+      state.sellerCredentials.password = await hashPassword(password);
     }
     state.sellerCredentials.username = username;
     sellerCredentialsForm.elements.password.value = "";

@@ -1,5 +1,27 @@
 "use strict";
 
+async function hashPassword(password) {
+  const buffer = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(String(password || ""))
+  );
+  return Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function verifyStoredPassword(password, storedPassword, onUpgrade) {
+  const stored = String(storedPassword || "");
+  const inputHash = await hashPassword(password);
+  const matches = stored.length === 64 ? inputHash === stored : String(password) === stored;
+
+  if (matches && stored.length !== 64 && typeof onUpgrade === "function") {
+    onUpgrade(inputHash);
+  }
+
+  return matches;
+}
+
 function applyNoShowCounterChange(booking, nextArrivalStatus) {
   const customer = getCustomerRecordByPhone(booking?.customer_phone);
   if (!customer) {
@@ -338,7 +360,7 @@ function normalizeUsers(users) {
       lastName: String(user?.lastName || "").trim(),
       phone: String(user?.phone || "").trim(),
       email: String(user?.email || "").trim().toLowerCase(),
-      password: "",
+      password: String(user?.password || ""),
       owner_note: String(user?.owner_note || "").trim(),
       is_blocked: Boolean(user?.is_blocked),
       blocked_reason: String(user?.blocked_reason || "").trim(),

@@ -38,7 +38,7 @@ const DEFAULT_DATA = {
   },
   sellerCredentials: {
     username: "admin",
-    password: "1234"
+    password: "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
   },
   services: [
     { id: "service-1", category: "קטגוריה ראשית", name: "שירות לדוגמה 1", price: 150, duration_minutes: 60 },
@@ -2155,6 +2155,19 @@ async function finalizeCustomerLogin({ fullName = "", phone = "" } = {}) {
   notificationCenter?.rememberCurrentNotifications();
 }
 
+function finalizeLocalCustomerLogin(user) {
+  session.role = "customer";
+  session.authUserId = user.id || `local-customer:${normalizePhoneNumber(user.phone)}`;
+  session.customerPhone = normalizePhoneNumber(user.phone);
+  uiState.customerBookingsView = "active";
+  uiState.bookingDraft.fullName = buildCustomerFullName(user.firstName, user.lastName);
+  uiState.bookingDraft.phone = user.phone;
+  rememberCustomerSession(user.phone);
+  closeAuthModal();
+  notificationCenter?.rememberCurrentNotifications();
+  rerenderAll();
+}
+
 function updateCurrentCustomer(fullName, phone) {
   const customer = getCurrentCustomer();
   const nameParts = parseFullName(fullName);
@@ -2470,7 +2483,26 @@ customerSignupForm?.addEventListener("submit", async (event) => {
   }
 
   if (!supabaseEnabled) {
-    appUi.toast("׳—׳™׳‘׳•׳¨ Supabase ׳¢׳“׳™׳™׳ ׳׳ ׳–׳׳™׳ ׳‘׳“׳£ ׳”׳–׳”.", { variant: "error" });
+    const existing = state.users.find((user) => user.email === email || isSamePhone(user.phone, normalizedPhone));
+    if (existing && existing.email !== email) {
+      appUi.toast("כבר קיים חשבון עם הטלפון הזה.", { variant: "error" });
+      return;
+    }
+
+    const passwordHash = await hashPassword(password);
+    const localUser = existing || {
+      id: `local-customer-${Date.now()}`,
+      owner_note: "",
+      is_blocked: false,
+      blocked_reason: "",
+      blocked_at: "",
+      no_show_count: 0,
+      created_at: new Date().toISOString()
+    };
+    Object.assign(localUser, { firstName, lastName, phone: normalizedPhone, email, password: passwordHash });
+    if (!existing) state.users.push(localUser);
+    saveState();
+    finalizeLocalCustomerLogin(localUser);
     return;
   }
 
@@ -2500,7 +2532,16 @@ customerLoginForm.addEventListener("submit", async (event) => {
   }
 
   if (!supabaseEnabled) {
-    appUi.toast("׳—׳™׳‘׳•׳¨ Supabase ׳¢׳“׳™׳™׳ ׳׳ ׳–׳׳™׳ ׳‘׳“׳£ ׳”׳–׳”.", { variant: "error" });
+    const localUser = state.users.find((user) => user.email === email);
+    const validPassword = localUser && await verifyStoredPassword(password, localUser.password, (passwordHash) => {
+      localUser.password = passwordHash;
+      saveState();
+    });
+    if (!validPassword) {
+      appUi.toast("האימייל או הסיסמה אינם נכונים.", { variant: "error" });
+      return;
+    }
+    finalizeLocalCustomerLogin(localUser);
     return;
   }
 
@@ -2514,7 +2555,18 @@ customerLoginForm.addEventListener("submit", async (event) => {
 
 customerForgotPasswordButton?.addEventListener("click", async () => {
   if (!supabaseEnabled) {
-    appUi.toast("׳—׳™׳‘׳•׳¨ Supabase ׳¢׳“׳™׳™׳ ׳׳ ׳–׳׳™׳ ׳‘׳“׳£ ׳”׳–׳”.", { variant: "error" });
+    const validPassword = username === state.sellerCredentials.username
+      && await verifyStoredPassword(password, state.sellerCredentials.password, (passwordHash) => {
+        state.sellerCredentials.password = passwordHash;
+        saveState();
+      });
+    if (!validPassword) {
+      appUi.toast("פרטי הכניסה לא תקינים.", { variant: "error" });
+      return;
+    }
+    rememberSellerSession();
+    sessionStorage.setItem(SELLER_SESSION_KEY, "1");
+    window.location.href = "owner.html";
     return;
   }
 
@@ -2725,6 +2777,8 @@ sellerCredentialsForm.addEventListener("submit", async (event) => {
         email: username,
         password
       });
+    } else if (!supabaseEnabled && password) {
+      state.sellerCredentials.password = await hashPassword(password);
     }
     state.sellerCredentials.username = username;
     sellerCredentialsForm.elements.password.value = "";
