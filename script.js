@@ -600,18 +600,11 @@ function clearRememberedCustomerSession() {
   localStorage.removeItem(CUSTOMER_SESSION_KEY);
 }
 
-function rememberSellerSession() {
-  localStorage.setItem(SELLER_SESSION_KEY, "1");
-}
 
-function clearRememberedSellerSession() {
-  localStorage.removeItem(SELLER_SESSION_KEY);
-  sessionStorage.removeItem(SELLER_SESSION_KEY);
-}
 
-function isSellerRemembered() {
-  return localStorage.getItem(SELLER_SESSION_KEY) === "1" || sessionStorage.getItem(SELLER_SESSION_KEY) === "1";
-}
+
+
+
 
 function restoreRememberedCustomerSession() {
   if (supabaseEnabled) {
@@ -644,289 +637,41 @@ function restoreRememberedCustomerSession() {
   }
 }
 
-function normalizeBusiness(business) {
-  const normalized = { ...business };
 
-  if (!normalized.name) {
-    normalized.name = DEFAULT_DATA.business.name;
-  }
 
-  if (!normalized.description) {
-    normalized.description = DEFAULT_DATA.business.description;
-  }
 
-  if (!normalized.address) {
-    normalized.address = DEFAULT_DATA.business.address;
-  }
 
-  if (!normalized.phone) {
-    normalized.phone = DEFAULT_DATA.business.phone;
-  }
 
-  normalized.instagram_url = normalizeSocialUrl(normalized.instagram_url);
-  normalized.cover_image = String(normalized.cover_image || "").trim();
-  normalized.profile_image = String(normalized.profile_image || "").trim();
-  normalized.preparation_message = String(normalized.preparation_message || DEFAULT_DATA.business.preparation_message).trim();
-  normalized.features = {
-    ...DEFAULT_DATA.business.features,
-    ...(business?.features || {})
-  };
-  return normalized;
-}
 
-function normalizeServices(services) {
-  return (Array.isArray(services) ? services : []).map((service) => {
-    const { duration, ...rest } = service || {};
-    return {
-      ...rest,
-      duration_minutes: Number(service?.duration_minutes ?? duration ?? 30)
-    };
-  });
-}
 
-function normalizeStaff(staff) {
-  return [{ ...DEFAULT_OWNER_STAFF }];
-}
 
-function normalizeUsers(users) {
-  if (!Array.isArray(users)) {
-    return [];
-  }
 
-  return users
-    .map((user) => ({
-      id: String(user?.id || ""),
-      auth_user_id: String(user?.auth_user_id || ""),
-      firstName: String(user?.firstName || "").trim(),
-      lastName: String(user?.lastName || "").trim(),
-      phone: String(user?.phone || "").trim(),
-      email: String(user?.email || "").trim().toLowerCase(),
-      password: "",
-      owner_note: String(user?.owner_note || "").trim(),
-      is_blocked: Boolean(user?.is_blocked),
-      blocked_reason: String(user?.blocked_reason || "").trim(),
-      blocked_at: String(user?.blocked_at || ""),
-      no_show_count: Number(user?.no_show_count || 0),
-      created_at: String(user?.created_at || new Date().toISOString())
-    }))
-    .filter((user) => normalizePhoneNumber(user.phone));
-}
 
-function normalizeBookings(bookings, staff, services) {
-  const fallbackStaff = staff[0] || DEFAULT_OWNER_STAFF;
 
-  return bookings.map((booking) => {
-    const service = services.find((item) => item.id === booking.service_id);
-    const assignedStaff = staff.find((member) => member.id === booking.staff_id) || fallbackStaff;
-    const normalizedServiceIds = Array.isArray(booking.service_ids) && booking.service_ids.length
-      ? booking.service_ids.map((serviceId) => String(serviceId).trim()).filter(Boolean)
-      : booking.service_id
-        ? [String(booking.service_id).trim()]
-        : [];
-    const normalizedServiceNames = Array.isArray(booking.service_names) && booking.service_names.length
-      ? booking.service_names.map((serviceName) => String(serviceName).trim()).filter(Boolean)
-      : booking.service_name
-        ? [String(booking.service_name).trim()]
-        : service
-          ? [service.name]
-          : [];
 
-    return {
-      ...booking,
-      service_ids: normalizedServiceIds,
-      service_names: normalizedServiceNames,
-      service_name: String(booking.service_name || normalizedServiceNames.join(" + ") || service?.name || "").trim(),
-      duration_minutes: Number(booking.duration_minutes || service?.duration_minutes || 30),
-      arrival_status: normalizeArrivalStatus(booking.arrival_status, booking.status),
-      hidden_for_customer: Boolean(booking.hidden_for_customer),
-      attendance_confirmation_requested_at: String(booking.attendance_confirmation_requested_at || ""),
-      attendance_confirmation_status: normalizeAttendanceConfirmationStatus(booking.attendance_confirmation_status),
-      attendance_confirmation_answered_at: String(booking.attendance_confirmation_answered_at || ""),
-      staff_id: assignedStaff.id,
-      staff_name: assignedStaff.name
-    };
-  });
-}
 
-function normalizeWaitlistEntries(entries) {
-  if (!Array.isArray(entries)) {
-    return [];
-  }
 
-  return entries
-    .map((entry, index) => ({
-      id: String(entry?.id || `waitlist-${Date.now()}-${index}`),
-      customer_phone: String(entry?.customer_phone || "").trim(),
-      customer_name: String(entry?.customer_name || "").trim(),
-      service_id: String(entry?.service_id || "").trim(),
-      service_name: String(entry?.service_name || "").trim(),
-      booking_date: String(entry?.booking_date || "").trim(),
-      notes: String(entry?.notes || "").trim(),
-      status: ["waiting", "notified", "removed"].includes(String(entry?.status || "").trim())
-        ? String(entry.status).trim()
-        : "waiting",
-      created_at: String(entry?.created_at || new Date().toISOString()),
-      notified_at: String(entry?.notified_at || "")
-    }))
-    .filter((entry) => normalizePhoneNumber(entry.customer_phone) && entry.service_id && entry.booking_date)
-    .sort((left, right) => String(left.created_at).localeCompare(String(right.created_at)));
-}
 
-function normalizeNotifications(notifications) {
-  if (window.AppNotifications?.normalizeList) {
-    return window.AppNotifications.normalizeList(notifications);
-  }
 
-  if (!Array.isArray(notifications)) {
-    return [];
-  }
 
-  return notifications
-    .map((notification, index) => ({
-      id: String(notification?.id || `notification-${Date.now()}-${index}`),
-      title: String(notification?.title || "׳”׳×׳¨׳׳” ׳—׳“׳©׳”").trim(),
-      message: String(notification?.message || "").trim(),
-      created_at: String(notification?.created_at || new Date().toISOString()),
-      is_read: Boolean(notification?.is_read ?? notification?.read),
-      user_id: String(notification?.user_id || notification?.userId || "").trim(),
-      type: String(notification?.type || "general").trim()
-    }))
-    .filter((notification) => notification.user_id && notification.title)
-    .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)));
-}
 
-function normalizeCustomerNotes(notes) {
-  if (!Array.isArray(notes)) {
-    return [];
-  }
 
-  const noteMap = new Map();
 
-  notes.forEach((item, index) => {
-    const customerPhone = normalizePhoneNumber(item?.customer_phone);
-    const noteText = String(item?.note || "").trim();
 
-    if (!customerPhone || !noteText) {
-      return;
-    }
 
-    noteMap.set(customerPhone, {
-      id: String(item?.id || `customer-note-${Date.now()}-${index}`),
-      customer_phone: customerPhone,
-      customer_name: String(item?.customer_name || "").trim(),
-      note: noteText,
-      updated_at: String(item?.updated_at || new Date().toISOString())
-    });
-  });
 
-  return [...noteMap.values()].sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)));
-}
 
-function normalizeBlockedSlots(blockedSlots) {
-  if (!Array.isArray(blockedSlots)) {
-    return [];
-  }
 
-  const seen = new Set();
 
-  return blockedSlots
-    .map((slot, index) => ({
-      id: String(slot?.id || `blocked-slot-${Date.now()}-${index}`),
-      blocked_date: String(slot?.blocked_date || "").trim(),
-      blocked_time: String(slot?.blocked_time || "").trim().slice(0, 5),
-      note: String(slot?.note || "").trim()
-    }))
-    .filter((slot) => slot.blocked_date && /^\d{2}:\d{2}$/.test(slot.blocked_time))
-    .filter((slot) => {
-      const key = `${slot.blocked_date}|${slot.blocked_time}`;
-      if (seen.has(key)) {
-        return false;
-      }
 
-      seen.add(key);
-      return true;
-    })
-    .sort((left, right) => `${left.blocked_date} ${left.blocked_time}`.localeCompare(`${right.blocked_date} ${right.blocked_time}`));
-}
 
-function normalizeSpecialHours(specialHours) {
-  if (!Array.isArray(specialHours)) {
-    return [];
-  }
 
-  const seen = new Set();
 
-  return specialHours
-    .map((item, index) => ({
-      id: String(item?.id || `special-hours-${Date.now()}-${index}`),
-      special_date: String(item?.special_date || "").trim(),
-      opens_at: String(item?.opens_at || "").trim().slice(0, 5) || null,
-      closes_at: String(item?.closes_at || "").trim().slice(0, 5) || null,
-      slot_interval_minutes: Number(item?.slot_interval_minutes || 30),
-      is_closed: Boolean(item?.is_closed),
-      note: String(item?.note || "").trim()
-    }))
-    .filter((item) => item.special_date)
-    .filter((item) => {
-      if (!item.is_closed && (!/^\d{2}:\d{2}$/.test(String(item.opens_at || "")) || !/^\d{2}:\d{2}$/.test(String(item.closes_at || "")))) {
-        return false;
-      }
 
-      if (item.is_closed) {
-        item.opens_at = null;
-        item.closes_at = null;
-      }
 
-      const key = item.special_date;
-      if (seen.has(key)) {
-        return false;
-      }
 
-      seen.add(key);
-      return true;
-    })
-    .sort((left, right) => left.special_date.localeCompare(right.special_date));
-}
 
-function localDateValue(date) {
-  const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().split("T")[0];
-}
 
-function todayDate() {
-  return localDateValue(new Date());
-}
-
-function monthKey(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function monthDateFromKey(key) {
-  const [year, month] = key.split("-").map(Number);
-  return new Date(year, month - 1, 1);
-}
-
-function normalizePhoneNumber(value) {
-  return String(value || "").replace(/[^\d+]/g, "");
-}
-
-function isSamePhone(left, right) {
-  return normalizePhoneNumber(left) === normalizePhoneNumber(right);
-}
-
-function getCustomerNotificationUserId(phone) {
-  const matchedUser = state.users.find((user) => isSamePhone(user.phone, phone) && user.auth_user_id);
-  if (matchedUser?.auth_user_id) {
-    return matchedUser.auth_user_id;
-  }
-
-  const normalizedPhone = normalizePhoneNumber(phone);
-  return normalizedPhone ? `customer:${normalizedPhone}` : "";
-}
-
-function getBookingCustomerNotificationUserId(booking) {
-  return getCustomerNotificationUserId(booking?.customer_phone);
-}
 
 function getCurrentNotificationUserId() {
   if (session.role === "seller" && session.authUserId) {
@@ -940,37 +685,15 @@ function getCurrentNotificationUserId() {
   return "";
 }
 
-function getBookingCustomerName(booking) {
-  return [booking?.customer_first_name, booking?.customer_last_name].filter(Boolean).join(" ").trim() || "׳׳§׳•׳—׳”";
-}
+
 
 function getOwnerNotificationTargetId() {
   return session.authUserId || "owner";
 }
 
-function getBookingDateTimeText(booking) {
-  if (!booking) {
-    return "";
-  }
 
-  return `${formatDisplayDate(booking.booking_date)} ׳‘׳©׳¢׳” ${String(booking.booking_time || "").slice(0, 5)}`;
-}
 
-function pushAppNotification(userId, title, message, type, config = {}) {
-  if (!userId || !notificationCenter) {
-    return null;
-  }
 
-  return notificationCenter.notify(
-    {
-      user_id: userId,
-      title,
-      message,
-      type
-    },
-    config
-  );
-}
 
 function notifyOwnerAppointmentBooked(booking) {
   pushAppNotification(
@@ -981,110 +704,25 @@ function notifyOwnerAppointmentBooked(booking) {
   );
 }
 
-function notifyOwnerAppointmentCancelled(booking, actorText = "׳”׳׳§׳•׳—׳”") {
-  pushAppNotification(
-    getOwnerNotificationTargetId(),
-    "׳×׳•׳¨ ׳‘׳•׳˜׳",
-    `${actorText} ׳‘׳™׳˜׳׳” ׳׳× ׳”׳×׳•׳¨ ׳©׳ ${getBookingCustomerName(booking)} ׳${booking.service_name} ׳‘׳×׳׳¨׳™׳ ${getBookingDateTimeText(booking)}.`,
-    "appointment_cancelled"
-  );
-}
 
-function notifyOwnerAppointmentRescheduled(booking, previousBooking = null) {
-  const previousText = previousBooking ? ` ׳‘׳׳§׳•׳ ${getBookingDateTimeText(previousBooking)}` : "";
-  pushAppNotification(
-    getOwnerNotificationTargetId(),
-    "׳‘׳§׳©׳× ׳©׳™׳ ׳•׳™ ׳×׳•׳¨",
-    `${getBookingCustomerName(booking)} ׳‘׳™׳§׳©׳” ׳׳”׳¢׳‘׳™׳¨ ׳׳× ׳”׳×׳•׳¨ ׳${getBookingDateTimeText(booking)}${previousText}.`,
-    "appointment_rescheduled"
-  );
-}
 
-function notifyOwnerAppointmentUpdated(booking, updateText) {
-  pushAppNotification(
-    getOwnerNotificationTargetId(),
-    "׳×׳•׳¨ ׳¢׳•׳“׳›׳",
-    `${updateText}: ${getBookingCustomerName(booking)}, ${booking.service_name}, ${getBookingDateTimeText(booking)}.`,
-    "appointment_updated"
-  );
-}
 
-function notifyCustomerAppointmentCancelledByOwner(booking) {
-  pushAppNotification(
-    getBookingCustomerNotificationUserId(booking),
-    "׳”׳×׳•׳¨ ׳‘׳•׳˜׳ ׳¢׳ ׳™׳“׳™ ׳”׳¢׳¡׳§",
-    `׳”׳×׳•׳¨ ׳©׳׳ ׳${booking.service_name} ׳‘׳×׳׳¨׳™׳ ${getBookingDateTimeText(booking)} ׳‘׳•׳˜׳ ׳¢׳ ׳™׳“׳™ ׳‘׳¢׳ ׳”׳¢׳¡׳§.`,
-    "appointment_cancelled"
-  );
-}
 
-function notifyCustomerAppointmentChanged(booking, previousBooking = null) {
-  const dateChanged = previousBooking && previousBooking.booking_date !== booking.booking_date;
-  const timeChanged = previousBooking && String(previousBooking.booking_time).slice(0, 5) !== String(booking.booking_time).slice(0, 5);
-  const title = dateChanged && timeChanged
-    ? "׳×׳׳¨׳™׳ ׳•׳©׳¢׳× ׳”׳×׳•׳¨ ׳”׳©׳×׳ ׳•"
-    : dateChanged
-      ? "׳×׳׳¨׳™׳ ׳”׳×׳•׳¨ ׳”׳©׳×׳ ׳”"
-      : timeChanged
-        ? "׳©׳¢׳× ׳”׳×׳•׳¨ ׳”׳©׳×׳ ׳×׳”"
-        : "׳”׳×׳•׳¨ ׳¢׳•׳“׳›׳";
-  const previousText = previousBooking ? ` ׳”׳×׳•׳¨ ׳”׳§׳•׳“׳ ׳”׳™׳” ${getBookingDateTimeText(previousBooking)}.` : "";
 
-  pushAppNotification(
-    getBookingCustomerNotificationUserId(booking),
-    title,
-    `׳”׳×׳•׳¨ ׳©׳׳ ׳${booking.service_name} ׳ ׳§׳‘׳¢ ׳¢׳›׳©׳™׳• ׳${getBookingDateTimeText(booking)}.${previousText}`,
-    dateChanged || timeChanged ? "appointment_rescheduled" : "appointment_updated"
-  );
-}
 
-function notifyCustomerAppointmentUpdated(booking, updateText) {
-  pushAppNotification(
-    getBookingCustomerNotificationUserId(booking),
-    "׳”׳×׳•׳¨ ׳¢׳•׳“׳›׳",
-    `${updateText}: ${booking.service_name}, ${getBookingDateTimeText(booking)}.`,
-    "appointment_updated"
-  );
-}
 
-function notifyCustomerWaitlistOpened(waitlistEntry, cancelledBooking) {
-  if (!waitlistEntry || !cancelledBooking) {
-    return;
-  }
 
-  const timeText = cancelledBooking.booking_time ? ` ׳‘׳©׳¢׳” ${cancelledBooking.booking_time}` : "";
 
-  pushAppNotification(
-    getCustomerNotificationUserId(waitlistEntry.customer_phone),
-    "׳”׳×׳₪׳ ׳” ׳׳§׳•׳ ׳‘׳¨׳©׳™׳׳× ׳”׳”׳׳×׳ ׳”",
-    `׳”׳×׳₪׳ ׳” ׳׳§׳•׳ ׳${waitlistEntry.service_name} ׳‘׳×׳׳¨׳™׳ ${formatDisplayDate(cancelledBooking.booking_date)}${timeText}.`,
-    "appointment_updated"
-  );
-}
 
-function notifyCustomerAttendanceConfirmation(booking) {
-  pushAppNotification(
-    getBookingCustomerNotificationUserId(booking),
-    "׳׳™׳©׳•׳¨ ׳”׳’׳¢׳” ׳׳×׳•׳¨",
-    `׳׳—׳¨ ׳™׳© ׳׳ ׳×׳•׳¨ ׳${booking.service_name} ׳‘${getBookingDateTimeText(booking)}. ׳ ׳©׳׳— ׳׳“׳¢׳× ׳׳ ׳׳× ׳׳’׳™׳¢׳”.`,
-    "appointment_updated"
-  );
-}
 
-function buildCustomerFullName(firstName, lastName) {
-  return [String(firstName || "").trim(), String(lastName || "").trim()]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-}
 
-function normalizeSocialUrl(value) {
-  const trimmed = String(value || "").trim();
-  if (!trimmed || trimmed === "https://instagram.com") {
-    return "";
-  }
-  return trimmed;
-}
+
+
+
+
+
+
+
 
 function getSocialNetworkLabel(value) {
   try {
@@ -1114,113 +752,27 @@ function formatDurationMinutes(minutes) {
   return `${Number(minutes)} דקות`;
 }
 
-function formatStatus(status) {
-  if (status === "approved") {
-    return "׳׳•׳©׳¨";
-  }
-  if (status === "rejected") {
-    return "׳ ׳“׳—׳”";
-  }
-  if (status === "cancelled") {
-    return "׳‘׳•׳˜׳";
-  }
-  return "׳׳׳×׳™׳ ׳׳׳™׳©׳•׳¨";
-}
 
-function normalizeArrivalStatus(value, bookingStatus) {
-  if (bookingStatus !== "approved") {
-    return null;
-  }
 
-  const normalized = String(value || "").trim();
-  if (ARRIVAL_STATUS_OPTIONS.includes(normalized)) {
-    return normalized;
-  }
 
-  return "waiting";
-}
 
-function normalizeAttendanceConfirmationStatus(value) {
-  const normalized = String(value || "").trim();
-  if (["pending", "confirmed", "declined"].includes(normalized)) {
-    return normalized;
-  }
 
-  return "";
-}
 
-function formatAttendanceConfirmationStatus(status) {
-  if (status === "confirmed") {
-    return "׳׳™׳©׳¨׳” ׳”׳’׳¢׳”";
-  }
-  if (status === "declined") {
-    return "׳¡׳™׳׳ ׳” ׳©׳׳ ׳×׳’׳™׳¢";
-  }
-  if (status === "pending") {
-    return "׳׳׳×׳™׳ ׳׳׳™׳©׳•׳¨ ׳”׳’׳¢׳”";
-  }
-  return "";
-}
 
-function formatArrivalStatus(status) {
-  if (status === "arrived") {
-    return "׳”׳’׳™׳¢׳”";
-  }
-  if (status === "finished") {
-    return "׳”׳¡׳×׳™׳™׳";
-  }
-  if (status === "no_show") {
-    return "׳׳ ׳”׳’׳™׳¢׳”";
-  }
-  return "׳׳׳×׳™׳ ׳”";
-}
 
-function buildArrivalStatusOptions(selectedStatus) {
-  const safeStatus = normalizeArrivalStatus(selectedStatus, "approved") || "waiting";
 
-  return ARRIVAL_STATUS_OPTIONS.map((status) => `
-    <option value="${status}" ${status === safeStatus ? "selected" : ""}>${formatArrivalStatus(status)}</option>
-  `).join("");
-}
 
-function formatDisplayDate(dateValue) {
-  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("he-IL", {
-    weekday: "long",
-    day: "numeric",
-    month: "long"
-  });
-}
 
-function parseTimeToMinutes(value) {
-  const [hours, minutes] = value.split(":").map(Number);
-  return hours * 60 + minutes;
-}
 
-function formatMinutesToTime(totalMinutes) {
-  const hours = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
-  const minutes = String(totalMinutes % 60).padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
 
-function formatIcsDateTime(dateValue, timeValue) {
-  const [year, month, day] = dateValue.split("-").map(Number);
-  const [hours, minutes] = String(timeValue).slice(0, 5).split(":").map(Number);
 
-  return [
-    String(year).padStart(4, "0"),
-    String(month).padStart(2, "0"),
-    String(day).padStart(2, "0"),
-    "T",
-    String(hours).padStart(2, "0"),
-    String(minutes).padStart(2, "0"),
-    "00"
-  ].join("");
-}
 
-function getBookingEndTime(booking) {
-  const startMinutes = parseTimeToMinutes(String(booking.booking_time).slice(0, 5));
-  return formatMinutesToTime(startMinutes + Number(booking.duration_minutes || 30));
-}
+
+
+
+
+
+
 
 function buildBookingDateTime(dateValue, timeValue) {
   const safeTime = String(timeValue || "00:00").slice(0, 5);
@@ -1236,116 +788,23 @@ function getBookingEndDateTime(booking) {
   return new Date(startDateTime.getTime() + Number(booking.duration_minutes || 30) * 60000);
 }
 
-function escapeIcsText(value) {
-  return String(value || "")
-    .replace(/\\/g, "\\\\")
-    .replace(/\r?\n/g, "\\n")
-    .replace(/,/g, "\\,")
-    .replace(/;/g, "\\;");
-}
 
-function buildCalendarFileName(booking) {
-  const businessPart = String(state.business.name || "booking")
-    .trim()
-    .replace(/[<>:"/\\|?*]+/g, "")
-    .replace(/\s+/g, "-");
 
-  return `${businessPart || "booking"}-${booking.booking_date}-${String(booking.booking_time).replace(":", "-")}.ics`;
-}
 
-function buildDeviceCalendarContent(booking) {
-  const customerName = [booking.customer_first_name, booking.customer_last_name].filter(Boolean).join(" ").trim();
-  const descriptionLines = [
-    `׳©׳™׳¨׳•׳×: ${booking.service_name}`,
-    `׳¡׳˜׳˜׳•׳¡: ${formatStatus(booking.status)}`,
-    customerName ? `׳׳§׳•׳—׳”: ${customerName}` : "",
-    booking.customer_phone ? `׳˜׳׳₪׳•׳: ${booking.customer_phone}` : "",
-    booking.notes ? `׳”׳¢׳¨׳•׳×: ${booking.notes}` : ""
-  ].filter(Boolean);
 
-  return [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Booking App//HE",
-    "CALSCALE:GREGORIAN",
-    "BEGIN:VEVENT",
-    `UID:${booking.id}@local-booking-app`,
-    `DTSTAMP:${formatIcsDateTime(todayDate(), "00:00")}`,
-    `DTSTART:${formatIcsDateTime(booking.booking_date, booking.booking_time)}`,
-    `DTEND:${formatIcsDateTime(booking.booking_date, getBookingEndTime(booking))}`,
-    `SUMMARY:${escapeIcsText(`${state.business.name} - ${booking.service_name}`)}`,
-    `DESCRIPTION:${escapeIcsText(descriptionLines.join("\n"))}`,
-    `LOCATION:${escapeIcsText(state.business.address || "")}`,
-    "END:VEVENT",
-    "END:VCALENDAR"
-  ].join("\r\n");
-}
 
-function buildGoogleCalendarUrl(booking) {
-  const businessTitle = String(state.business.name || DEFAULT_DATA.business.name).trim() || DEFAULT_DATA.business.name;
-  const customerName = [booking.customer_first_name, booking.customer_last_name].filter(Boolean).join(" ").trim();
-  const descriptionLines = [
-    `׳©׳™׳¨׳•׳×: ${booking.service_name}`,
-    `׳¡׳˜׳˜׳•׳¡: ${formatStatus(booking.status)}`,
-    customerName ? `׳׳§׳•׳—׳”: ${customerName}` : "",
-    booking.customer_phone ? `׳˜׳׳₪׳•׳: ${booking.customer_phone}` : "",
-    booking.notes ? `׳”׳¢׳¨׳•׳×: ${booking.notes}` : ""
-  ].filter(Boolean);
 
-  const params = new URLSearchParams({
-    action: "TEMPLATE",
-    text: `${businessTitle} - ${booking.service_name}`,
-    dates: `${formatIcsDateTime(booking.booking_date, booking.booking_time)}/${formatIcsDateTime(booking.booking_date, getBookingEndTime(booking))}`,
-    details: descriptionLines.join("\n"),
-    location: state.business.address || ""
-  });
 
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
-}
 
-function openGoogleCalendarForBooking(booking) {
-  if (!booking) {
-    return;
-  }
 
-  const calendarUrl = buildGoogleCalendarUrl(booking);
-  const popup = window.open(calendarUrl, "_blank", "noopener");
 
-  if (!popup) {
-    window.location.href = calendarUrl;
-  }
-}
 
-function downloadDeviceCalendar(booking) {
-  if (!booking) {
-    return;
-  }
 
-  const file = new Blob([buildDeviceCalendarContent(booking)], {
-    type: "text/calendar;charset=utf-8"
-  });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(file);
-  link.download = buildCalendarFileName(booking);
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-}
 
-function openCalendarChoiceModal(bookingId) {
-  uiState.calendarChoiceBookingId = bookingId;
-  calendarChoiceModal.classList.remove("is-hidden");
-}
 
-function closeCalendarChoice() {
-  uiState.calendarChoiceBookingId = null;
-  calendarChoiceModal.classList.add("is-hidden");
-}
 
-function findBookingById(bookingId) {
-  return state.bookings.find((booking) => booking.id === bookingId) || null;
-}
+
+
 
 function getReplacementSourceBooking() {
   if (!uiState.replacementBookingId) {
@@ -1359,52 +818,17 @@ function findPendingChangeRequestForBooking(bookingId) {
   return state.bookings.find((booking) => booking.replaces_booking_id === bookingId && booking.status === "pending") || null;
 }
 
-function finalizeApprovedChangeRequest(booking) {
-  if (!booking?.replaces_booking_id) {
-    return null;
-  }
 
-  const oldBooking = findBookingById(booking.replaces_booking_id);
-  if (!oldBooking || !["pending", "approved"].includes(oldBooking.status)) {
-    return null;
-  }
-
-  oldBooking.status = "cancelled";
-  oldBooking.arrival_status = null;
-  oldBooking.replaced_by_id = booking.id;
-  return oldBooking;
-}
 
 function clearReplacementBooking() {
   uiState.replacementBookingId = null;
 }
 
-function clearRejectUndo(shouldRerender = false) {
-  if (uiState.rejectUndoTimeoutId) {
-    clearTimeout(uiState.rejectUndoTimeoutId);
-  }
 
-  uiState.rejectUndoBookingId = null;
-  uiState.rejectUndoPreviousStatus = null;
-  uiState.rejectUndoTimeoutId = null;
 
-  if (shouldRerender) {
-    rerenderAll();
-  }
-}
 
-function startRejectUndo(bookingId, previousStatus) {
-  clearRejectUndo(false);
-  uiState.rejectUndoBookingId = bookingId;
-  uiState.rejectUndoPreviousStatus = previousStatus;
-  uiState.rejectUndoTimeoutId = setTimeout(() => {
-    clearRejectUndo(true);
-  }, REJECT_UNDO_WINDOW_MS);
-}
 
-function isRejectUndoActiveForBooking(bookingId) {
-  return uiState.rejectUndoBookingId === bookingId;
-}
+
 
 function getSelectedService() {
   return getSelectedServices()[0] || null;
@@ -1495,14 +919,7 @@ function getCurrentCustomer() {
   return state.users.find((user) => isSamePhone(user.phone, session.customerPhone)) || null;
 }
 
-function getCustomerRecordByPhone(phone) {
-  const normalizedPhone = normalizePhoneNumber(phone);
-  if (!normalizedPhone) {
-    return null;
-  }
 
-  return state.users.find((user) => isSamePhone(user.phone, normalizedPhone)) || null;
-}
 
 function isCustomerBlocked(phone = session.customerPhone) {
   return Boolean(getCustomerRecordByPhone(phone)?.is_blocked);
@@ -1836,35 +1253,11 @@ function renderBookingSummary() {
   `;
 }
 
-function findRegularWorkingHoursForDate(dateValue) {
-  const dayOfWeek = new Date(`${dateValue}T00:00:00`).getDay();
-  return state.workingHours.find((entry) => Number(entry.day_of_week) === dayOfWeek) || null;
-}
 
-function findSpecialHoursForDate(dateValue) {
-  return state.specialHours.find((entry) => entry.special_date === dateValue) || null;
-}
 
-function findWorkingHoursForDate(dateValue) {
-  const specialDay = findSpecialHoursForDate(dateValue);
-  const regularDay = findRegularWorkingHoursForDate(dateValue);
 
-  if (!specialDay) {
-    return regularDay;
-  }
 
-  return {
-    id: specialDay.id,
-    day_of_week: regularDay?.day_of_week ?? new Date(`${dateValue}T00:00:00`).getDay(),
-    day_label: regularDay?.day_label || "׳™׳•׳ ׳׳™׳•׳—׳“",
-    opens_at: specialDay.is_closed ? null : specialDay.opens_at,
-    closes_at: specialDay.is_closed ? null : specialDay.closes_at,
-    slot_interval_minutes: Number(specialDay.slot_interval_minutes || regularDay?.slot_interval_minutes || 30),
-    is_closed: Boolean(specialDay.is_closed),
-    is_special: true,
-    note: specialDay.note || ""
-  };
-}
+
 
 function isPastDate(dateValue) {
   return dateValue < todayDate();
@@ -1887,9 +1280,7 @@ function getActiveBookingsForDate(dateValue) {
   return state.bookings.filter((booking) => booking.booking_date === dateValue && ["pending", "approved"].includes(booking.status));
 }
 
-function isSlotBlocked(dateValue, timeValue) {
-  return state.blockedSlots.some((slot) => slot.blocked_date === dateValue && slot.blocked_time === timeValue);
-}
+
 
 function getAssignableStaffIds(dateValue, startMinutes, durationMinutes) {
   const activeBookings = getActiveBookingsForDate(dateValue);
@@ -1935,25 +1326,7 @@ function hasAvailabilityOnDate(dateValue) {
   return getAvailableSlots(dateValue).length > 0;
 }
 
-function maybePromoteWaitlistForBooking(booking) {
-  if (!booking || !isBusinessFeatureEnabled("waitingList")) {
-    return;
-  }
 
-  const nextEntry = state.waitlistEntries.find((entry) =>
-    entry.status === "waiting" &&
-    entry.booking_date === booking.booking_date &&
-    entry.service_id === booking.service_id
-  );
-
-  if (!nextEntry) {
-    return;
-  }
-
-  nextEntry.status = "notified";
-  nextEntry.notified_at = new Date().toISOString();
-  notifyCustomerWaitlistOpened(nextEntry, booking);
-}
 
 function joinWaitlistForCurrentSelection() {
   const serviceBundle = getSelectedServiceBundle();
@@ -2028,42 +1401,9 @@ function shouldOfferAttendanceConfirmation(booking) {
   return booking.attendance_confirmation_status === "pending";
 }
 
-function requestAttendanceConfirmation(booking, options = {}) {
-  if (!booking || booking.status !== "approved" || !isBusinessFeatureEnabled("attendanceConfirmation")) {
-    return false;
-  }
 
-  if (booking.booking_date !== localDateValue(new Date(Date.now() + 86400000)) && !options.force) {
-    return false;
-  }
 
-  if (booking.attendance_confirmation_requested_at) {
-    return false;
-  }
 
-  booking.attendance_confirmation_requested_at = new Date().toISOString();
-  booking.attendance_confirmation_status = "pending";
-  booking.attendance_confirmation_answered_at = "";
-  notifyCustomerAttendanceConfirmation(booking);
-  return true;
-}
-
-function runAttendanceConfirmationSweep() {
-  if (!isBusinessFeatureEnabled("attendanceConfirmation")) {
-    return;
-  }
-
-  let changed = false;
-  state.bookings.forEach((booking) => {
-    if (requestAttendanceConfirmation(booking)) {
-      changed = true;
-    }
-  });
-
-  if (changed) {
-    saveState();
-  }
-}
 
 function renderTodayAvailability() {
   const serviceBundle = getSelectedServiceBundle();
@@ -2106,28 +1446,7 @@ function buildCalendarDays(monthDate) {
   });
 }
 
-function buildSellerCalendarDays(monthDate) {
-  const firstOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-  const firstVisible = new Date(firstOfMonth);
-  firstVisible.setDate(firstVisible.getDate() - firstOfMonth.getDay());
 
-  return Array.from({ length: 42 }, (_, index) => {
-    const date = new Date(firstVisible);
-    date.setDate(firstVisible.getDate() + index);
-    const value = localDateValue(date);
-    const hasBookings = state.bookings.some(
-      (booking) => booking.booking_date === value && booking.status !== "cancelled"
-    );
-    const hasSpecialHours = state.specialHours.some((entry) => entry.special_date === value);
-
-    return {
-      value,
-      dayNumber: date.getDate(),
-      isCurrentMonth: date.getMonth() === monthDate.getMonth(),
-      hasBookings: hasBookings || hasSpecialHours
-    };
-  });
-}
 
 function renderCalendar() {
   const monthDate = monthDateFromKey(uiState.selectedMonthKey);
@@ -2710,12 +2029,7 @@ function rerenderAll() {
   notificationCenter?.render();
 }
 
-function syncStateFromStorage() {
-  const freshState = loadState();
-  Object.assign(state, freshState);
-  rerenderAll();
-  notificationCenter?.showNewBrowserNotifications();
-}
+
 
 function goToStep(stepNumber) {
   showWizardStep(stepNumber);
@@ -2872,21 +2186,7 @@ function updateCurrentCustomer(fullName, phone) {
   rememberCustomerSession(session.customerPhone);
 }
 
-function applyNoShowCounterChange(booking, nextArrivalStatus) {
-  const customer = getCustomerRecordByPhone(booking?.customer_phone);
-  if (!customer) {
-    return;
-  }
 
-  const previousStatus = String(booking.arrival_status || "");
-  if (previousStatus !== "no_show" && nextArrivalStatus === "no_show") {
-    customer.no_show_count = Number(customer.no_show_count || 0) + 1;
-  }
-
-  if (previousStatus === "no_show" && nextArrivalStatus !== "no_show") {
-    customer.no_show_count = Math.max(0, Number(customer.no_show_count || 0) - 1);
-  }
-}
 
 function resolveAssignedStaff(dateValue, timeValue, service) {
   const startMinutes = parseTimeToMinutes(timeValue);
@@ -3583,7 +2883,7 @@ sellerCalendarList.addEventListener("click", async (event) => {
 
   booking.status = "cancelled";
   booking.arrival_status = null;
-  notifyOwnerAppointmentCancelled(booking, "׳‘׳¢׳ ׳”׳¢׳¡׳§");
+  notifyOwnerAppointmentCancelled(booking, "בעל העסק");
   notifyCustomerAppointmentCancelledByOwner(booking);
   saveState();
   rerenderAll();
@@ -3642,7 +2942,7 @@ sellerBookingsList.addEventListener("click", async (event) => {
     clearRejectUndo(false);
   booking.status = "cancelled";
   booking.arrival_status = null;
-  notifyOwnerAppointmentCancelled(booking, "׳‘׳¢׳ ׳”׳¢׳¡׳§");
+  notifyOwnerAppointmentCancelled(booking, "בעל העסק");
   notifyCustomerAppointmentCancelledByOwner(booking);
   maybePromoteWaitlistForBooking(booking);
   saveState();
@@ -3821,7 +3121,7 @@ myBookingsList.addEventListener("click", async (event) => {
     } else {
       booking.status = "cancelled";
       booking.arrival_status = null;
-      notifyOwnerAppointmentCancelled(booking);
+      notifyOwnerAppointmentCancelled(booking, "הלקוחה");
       maybePromoteWaitlistForBooking(booking);
       saveState();
       rerenderAll();
