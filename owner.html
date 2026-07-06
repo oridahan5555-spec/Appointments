@@ -209,6 +209,17 @@
               <textarea name="preparationMessage" rows="3" placeholder="למשל: נא להגיע בלי לק קודם, ולהגיע בזמן."></textarea>
             </label>
 
+            <fieldset class="theme-color-picker">
+              <legend>צבע האתר</legend>
+              <p>אפשר לבחור צבע מוכן או לפתוח את בורר הצבעים ולבחור כל צבע שרוצים.</p>
+              <div class="theme-color-presets" id="themeColorPresets" aria-label="צבעים מוכנים"></div>
+              <label class="theme-custom-color">
+                <span>בחירת צבע חופשית</span>
+                <input type="color" name="themeAccent" value="#b25fd1">
+                <output id="themeColorValue">#b25fd1</output>
+              </label>
+            </fieldset>
+
             <fieldset class="feature-switches">
               <legend>אפשרויות בונוס באתר</legend>
               <p>אפשר לכבות כל אפשרות שלא נחוצה כרגע. לאחר השמירה היא תיעלם מהאתר.</p>

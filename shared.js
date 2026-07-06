@@ -22,6 +22,37 @@ async function verifyStoredPassword(password, storedPassword, onUpgrade) {
   return matches;
 }
 
+function normalizeHexColor(value, fallback = "#b25fd1") {
+  const color = String(value || "").trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(color) ? color : fallback;
+}
+
+function mixHexColors(color, target, amount) {
+  const source = normalizeHexColor(color).slice(1);
+  const destination = normalizeHexColor(target, "#ffffff").slice(1);
+  const ratio = Math.max(0, Math.min(1, Number(amount) || 0));
+  const channels = [0, 2, 4].map((offset) => {
+    const start = Number.parseInt(source.slice(offset, offset + 2), 16);
+    const end = Number.parseInt(destination.slice(offset, offset + 2), 16);
+    return Math.round(start + (end - start) * ratio).toString(16).padStart(2, "0");
+  });
+  return `#${channels.join("")}`;
+}
+
+function applyThemeColor(value) {
+  const color = normalizeHexColor(value);
+  const red = Number.parseInt(color.slice(1, 3), 16);
+  const green = Number.parseInt(color.slice(3, 5), 16);
+  const blue = Number.parseInt(color.slice(5, 7), 16);
+  const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+  const root = document.documentElement;
+  root.style.setProperty("--accent", color);
+  root.style.setProperty("--accent-dark", mixHexColors(color, "#000000", 0.2));
+  root.style.setProperty("--accent-soft", mixHexColors(color, "#ffffff", 0.88));
+  root.style.setProperty("--accent-contrast", luminance > 165 ? "#1b1d24" : "#ffffff");
+  return color;
+}
+
 function applyNoShowCounterChange(booking, nextArrivalStatus) {
   const customer = getCustomerRecordByPhone(booking?.customer_phone);
   if (!customer) {

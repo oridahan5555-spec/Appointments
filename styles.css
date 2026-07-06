@@ -181,6 +181,7 @@
   --accent: #b25fd1;
   --accent-dark: #934cb0;
   --accent-soft: #f5e9fb;
+  --accent-contrast: #ffffff;
   --success: #2f9868;
   --warning: #b88400;
   --danger: #d64a5d;
@@ -743,7 +744,7 @@ a.ghost-button.is-keyboard-pressed {
 .wizard-step.is-complete .wizard-step-number {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
 }
 
 .wizard-step.is-complete {
@@ -1367,12 +1368,94 @@ a.ghost-button.is-keyboard-pressed {
   stroke-linejoin: round;
 }
 
+.theme-color-picker,
 .feature-switches {
   margin: 6px 0 4px;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface-soft);
+}
+
+.theme-color-picker legend,
+.feature-switches legend {
+  padding: 0 8px;
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.theme-color-picker > p {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.theme-color-presets {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.theme-color-swatch {
+  position: relative;
+  aspect-ratio: 1;
+  min-width: 0;
+  border: 3px solid #fff;
+  border-radius: 12px;
+  background: var(--swatch-color);
+  box-shadow: 0 0 0 1px var(--line), 0 4px 10px rgba(34, 37, 48, 0.1);
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.theme-color-swatch:hover {
+  transform: translateY(-2px) scale(1.04);
+}
+
+.theme-color-swatch.is-selected {
+  box-shadow: 0 0 0 3px var(--text), 0 7px 16px rgba(34, 37, 48, 0.18);
+}
+
+.theme-color-swatch.is-selected::after {
+  content: "✓";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 900;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+}
+
+.theme-custom-color {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.theme-custom-color input[type="color"] {
+  width: 56px;
+  height: 42px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.theme-custom-color output {
+  min-width: 74px;
+  direction: ltr;
+  color: var(--muted);
+  font-family: Consolas, monospace;
+  text-transform: uppercase;
 }
 
 .feature-switches legend {
@@ -1517,7 +1600,7 @@ a.ghost-button.is-keyboard-pressed {
 .primary-button {
   border: none;
   background: linear-gradient(135deg, var(--accent), var(--accent-dark));
-  color: #fff;
+  color: var(--accent-contrast);
 }
 
 .ghost-button,
@@ -2590,6 +2673,18 @@ a.ghost-button {
 @media (max-width: 719px) {
   .editor-row {
     grid-template-columns: 1fr;
+  }
+
+  .theme-color-presets {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .theme-custom-color {
+    grid-template-columns: minmax(0, 1fr) 52px;
+  }
+
+  .theme-custom-color output {
+    grid-column: 1 / -1;
   }
 }
 

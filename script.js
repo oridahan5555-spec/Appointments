@@ -33,7 +33,8 @@ const DEFAULT_DATA = {
       calendarExport: true,
       customerRescheduling: true,
       waitingList: true,
-      attendanceConfirmation: true
+      attendanceConfirmation: true,
+      themeAccent: "#b25fd1"
     }
   },
   sellerCredentials: {
@@ -1143,6 +1144,7 @@ function applyBusinessImages() {
 }
 
 function renderBusiness() {
+  applyThemeColor(state.business.features?.themeAccent);
   brandName.textContent = state.business.name;
   businessName.textContent = state.business.name;
   businessDescription.textContent = state.business.description;

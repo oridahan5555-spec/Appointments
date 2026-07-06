@@ -48,7 +48,8 @@ const DEFAULT_DATA = {
       customerRescheduling: true,
       waitingList: true,
       attendanceConfirmation: true,
-      workingDaysMode: "select_open_days"
+      workingDaysMode: "select_open_days",
+      themeAccent: "#b25fd1"
     }
   },
   sellerCredentials: {
@@ -136,6 +137,8 @@ const servicesEditor = document.getElementById("servicesEditor");
 const addServiceButton = document.getElementById("addServiceButton");
 const hoursForm = document.getElementById("hoursForm");
 const hoursEditor = document.getElementById("hoursEditor");
+const themeColorPresets = document.getElementById("themeColorPresets");
+const themeColorValue = document.getElementById("themeColorValue");
 const specialHoursForm = document.getElementById("specialHoursForm");
 const specialHoursList = document.getElementById("specialHoursList");
 const specialHoursWarning = document.getElementById("specialHoursWarning");
@@ -773,6 +776,7 @@ function getBusiestDayInfo() {
 
 
 function renderHeader() {
+  applyThemeColor(state.business.features?.themeAccent);
   ownerBrandName.textContent = state.business.name;
   ownerBrandDescription.textContent = state.business.description || "ניהול העסק";
 }
@@ -1431,6 +1435,7 @@ function renderEditors() {
   businessForm.elements.phone.value = state.business.phone;
   businessForm.elements.instagramUrl.value = normalizeSocialUrl(state.business.instagram_url);
   businessForm.elements.preparationMessage.value = state.business.preparation_message || "";
+  renderThemeColorEditor();
   Object.entries(BUSINESS_FEATURE_FIELDS).forEach(([featureName, fieldName]) => {
     businessForm.elements[fieldName].checked = state.business.features[featureName] !== false;
   });
@@ -1512,8 +1517,43 @@ function getBusinessFeaturesFromForm() {
         Boolean(businessForm.elements[fieldName].checked)
       ])
     ),
-    workingDaysMode: getWorkingDaysMode()
+    workingDaysMode: getWorkingDaysMode(),
+    themeAccent: normalizeHexColor(businessForm.elements.themeAccent.value)
   };
+}
+
+const THEME_COLOR_PRESETS = [
+  "#b25fd1", "#7c3aed", "#4f46e5", "#2563eb", "#0284c7", "#0891b2",
+  "#0f9f8f", "#16a34a", "#65a30d", "#ca8a04", "#ea580c", "#dc2626",
+  "#e11d48", "#db2777", "#9333ea", "#475569", "#111827", "#8b5e3c"
+];
+
+function renderThemeColorEditor() {
+  const selectedColor = normalizeHexColor(state.business.features?.themeAccent);
+  businessForm.elements.themeAccent.value = selectedColor;
+  themeColorValue.textContent = selectedColor;
+  themeColorPresets.innerHTML = THEME_COLOR_PRESETS.map((color) => `
+    <button
+      class="theme-color-swatch ${color === selectedColor ? "is-selected" : ""}"
+      type="button"
+      data-theme-color="${color}"
+      style="--swatch-color: ${color}"
+      aria-label="בחירת הצבע ${color}"
+      aria-pressed="${color === selectedColor}"
+    ></button>
+  `).join("");
+}
+
+function selectThemeColor(value) {
+  const color = normalizeHexColor(value);
+  businessForm.elements.themeAccent.value = color;
+  themeColorValue.textContent = color;
+  applyThemeColor(color);
+  themeColorPresets.querySelectorAll("[data-theme-color]").forEach((button) => {
+    const isSelected = button.dataset.themeColor === color;
+    button.classList.toggle("is-selected", isSelected);
+    button.setAttribute("aria-pressed", String(isSelected));
+  });
 }
 
 function renderBusinessFeatureEditorState() {
@@ -2403,6 +2443,12 @@ sellerBookingsList.addEventListener("change", (event) => {
 });
 
 businessForm.addEventListener("click", (event) => {
+  const colorButton = event.target.closest("[data-theme-color]");
+  if (colorButton) {
+    selectThemeColor(colorButton.dataset.themeColor);
+    return;
+  }
+
   const clearButton = event.target.closest("[data-clear-image]");
   if (!clearButton) {
     return;
@@ -2418,6 +2464,13 @@ businessForm.addEventListener("click", (event) => {
 
   saveState();
   rerenderAll();
+});
+
+businessForm.addEventListener("input", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLInputElement && target.name === "themeAccent") {
+    selectThemeColor(target.value);
+  }
 });
 
 businessForm.addEventListener("change", async (event) => {
