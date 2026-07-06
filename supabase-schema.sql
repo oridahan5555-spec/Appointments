@@ -183,6 +183,31 @@ alter table notifications enable row level security;
 alter table customers enable row level security;
 alter table waitlist_entries enable row level security;
 
+create table if not exists owner_profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  business_id uuid not null references business(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+alter table owner_profiles enable row level security;
+
+create or replace function public.is_owner()
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public, auth
+as $$
+  select exists (
+    select 1
+    from public.owner_profiles
+    where id = auth.uid()
+  );
+$$;
+
+revoke all on function public.is_owner() from public;
+grant execute on function public.is_owner() to authenticated;
+
 drop policy if exists "business public read" on business;
 create policy "business public read"
 on business
@@ -191,12 +216,13 @@ to anon, authenticated
 using (true);
 
 drop policy if exists "business public write" on business;
-create policy "business public write"
+drop policy if exists "business owner write" on business;
+create policy "business owner write"
 on business
 for all
-to anon, authenticated
-using (true)
-with check (true);
+to authenticated
+using (public.is_owner())
+with check (public.is_owner());
 
 drop policy if exists "services public read" on services;
 create policy "services public read"
@@ -206,12 +232,13 @@ to anon, authenticated
 using (true);
 
 drop policy if exists "services public write" on services;
-create policy "services public write"
+drop policy if exists "services owner write" on services;
+create policy "services owner write"
 on services
 for all
-to anon, authenticated
-using (true)
-with check (true);
+to authenticated
+using (public.is_owner())
+with check (public.is_owner());
 
 drop policy if exists "working_hours public read" on working_hours;
 create policy "working_hours public read"
@@ -221,93 +248,63 @@ to anon, authenticated
 using (true);
 
 drop policy if exists "working_hours public write" on working_hours;
-create policy "working_hours public write"
+drop policy if exists "working_hours owner write" on working_hours;
+create policy "working_hours owner write"
 on working_hours
 for all
-to anon, authenticated
-using (true)
-with check (true);
+to authenticated
+using (public.is_owner())
+with check (public.is_owner());
 
 drop policy if exists "bookings public read" on bookings;
-create policy "bookings public read"
-on bookings
-for select
-to anon, authenticated
-using (true);
-
 drop policy if exists "bookings public insert" on bookings;
-create policy "bookings public insert"
-on bookings
-for insert
-to anon, authenticated
-with check (status = 'pending');
-
 drop policy if exists "bookings public update" on bookings;
-create policy "bookings public update"
+drop policy if exists "bookings owner manage" on bookings;
+create policy "bookings owner manage"
 on bookings
-for update
-to anon, authenticated
-using (true)
-with check (true);
+for all
+to authenticated
+using (public.is_owner())
+with check (public.is_owner());
 
 drop policy if exists "notifications public read" on notifications;
-create policy "notifications public read"
-on notifications
-for select
-to anon, authenticated
-using (true);
-
 drop policy if exists "notifications public insert" on notifications;
-create policy "notifications public insert"
-on notifications
-for insert
-to anon, authenticated
-with check (true);
-
 drop policy if exists "notifications public update" on notifications;
-create policy "notifications public update"
-on notifications
-for update
-to anon, authenticated
-using (true)
-with check (true);
-
 drop policy if exists "notifications public delete" on notifications;
-create policy "notifications public delete"
+drop policy if exists "notifications owner manage" on notifications;
+create policy "notifications owner manage"
 on notifications
-for delete
-to anon, authenticated
-using (true);
+for all
+to authenticated
+using (public.is_owner())
+with check (public.is_owner());
 
 drop policy if exists "customers public read" on customers;
-create policy "customers public read"
-on customers
-for select
-to anon, authenticated
-using (true);
-
 drop policy if exists "customers public write" on customers;
-create policy "customers public write"
+drop policy if exists "customers owner manage" on customers;
+create policy "customers owner manage"
 on customers
 for all
-to anon, authenticated
-using (true)
-with check (true);
+to authenticated
+using (public.is_owner())
+with check (public.is_owner());
 
 drop policy if exists "waitlist public read" on waitlist_entries;
-create policy "waitlist public read"
-on waitlist_entries
-for select
-to anon, authenticated
-using (true);
-
 drop policy if exists "waitlist public write" on waitlist_entries;
-create policy "waitlist public write"
+drop policy if exists "waitlist owner manage" on waitlist_entries;
+create policy "waitlist owner manage"
 on waitlist_entries
 for all
-to anon, authenticated
-using (true)
-with check (true);
+to authenticated
+using (public.is_owner())
+with check (public.is_owner());
+
+drop policy if exists "owner_profiles owner read own" on owner_profiles;
+create policy "owner_profiles owner read own"
+on owner_profiles
+for select
+to authenticated
+using (id = auth.uid());
 
 insert into business (name, description, address, phone, instagram_url)
 select
