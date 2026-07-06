@@ -41,9 +41,9 @@ const DEFAULT_DATA = {
     password: "1234"
   },
   services: [
-    { id: "service-1", category: "קטגוריה ראשית", name: "שירות לדוגמה 1", price: 150, duration: 60 },
-    { id: "service-2", category: "קטגוריה ראשית", name: "שירות לדוגמה 2", price: 220, duration: 90 },
-    { id: "service-3", category: "קטגוריה נוספת", name: "שירות לדוגמה 3", price: 80, duration: 30 }
+    { id: "service-1", category: "קטגוריה ראשית", name: "שירות לדוגמה 1", price: 150, duration_minutes: 60 },
+    { id: "service-2", category: "קטגוריה ראשית", name: "שירות לדוגמה 2", price: 220, duration_minutes: 90 },
+    { id: "service-3", category: "קטגוריה נוספת", name: "שירות לדוגמה 3", price: 80, duration_minutes: 30 }
   ],
   staff: [DEFAULT_OWNER_STAFF],
   workingHours: [
@@ -337,7 +337,7 @@ function loadState() {
         ...defaults.sellerCredentials,
         ...(parsed.sellerCredentials || {})
       },
-      services: Array.isArray(parsed.services) && parsed.services.length ? parsed.services : defaults.services,
+      services: normalizeServices(Array.isArray(parsed.services) && parsed.services.length ? parsed.services : defaults.services),
       staff: Array.isArray(parsed.staff) && parsed.staff.length ? parsed.staff : defaults.staff,
       workingHours: Array.isArray(parsed.workingHours) && parsed.workingHours.length ? parsed.workingHours : defaults.workingHours,
       specialHours: normalizeSpecialHours(parsed.specialHours),
@@ -475,7 +475,7 @@ function mergePublicState(publicState) {
     state.business = normalizeBusiness(publicState.business);
   }
 
-  state.services = Array.isArray(publicState.services) ? publicState.services : state.services;
+  state.services = normalizeServices(Array.isArray(publicState.services) ? publicState.services : state.services);
   state.workingHours = Array.isArray(publicState.workingHours) ? publicState.workingHours : state.workingHours;
   state.specialHours = normalizeSpecialHours(publicState.specialHours);
   state.blockedSlots = normalizeBlockedSlots(publicState.blockedSlots);
@@ -674,6 +674,16 @@ function normalizeBusiness(business) {
   return normalized;
 }
 
+function normalizeServices(services) {
+  return (Array.isArray(services) ? services : []).map((service) => {
+    const { duration, ...rest } = service || {};
+    return {
+      ...rest,
+      duration_minutes: Number(service?.duration_minutes ?? duration ?? 30)
+    };
+  });
+}
+
 function normalizeStaff(staff) {
   return [{ ...DEFAULT_OWNER_STAFF }];
 }
@@ -726,7 +736,7 @@ function normalizeBookings(bookings, staff, services) {
       service_ids: normalizedServiceIds,
       service_names: normalizedServiceNames,
       service_name: String(booking.service_name || normalizedServiceNames.join(" + ") || service?.name || "").trim(),
-      duration_minutes: Number(booking.duration_minutes || service?.duration || 30),
+      duration_minutes: Number(booking.duration_minutes || service?.duration_minutes || 30),
       arrival_status: normalizeArrivalStatus(booking.arrival_status, booking.status),
       hidden_for_customer: Boolean(booking.hidden_for_customer),
       attendance_confirmation_requested_at: String(booking.attendance_confirmation_requested_at || ""),
@@ -1438,7 +1448,7 @@ function buildServiceBundle(services) {
     names,
     name: names.join(" + "),
     price: services.reduce((sum, service) => sum + Number(service.price || 0), 0),
-    duration: services.reduce((sum, service) => sum + Number(service.duration || 0), 0),
+    duration_minutes: services.reduce((sum, service) => sum + Number(service.duration_minutes || 0), 0),
     primaryServiceId: ids[0],
     primaryServiceName: names[0]
   };
@@ -1768,7 +1778,7 @@ function renderServices() {
                 <span class="service-card-check" aria-hidden="true"></span>
               </div>
               <div class="service-card-meta">
-                <span>${formatPrice(service.price)} | ${formatDurationMinutes(service.duration)}</span>
+                <span>${formatPrice(service.price)} | ${formatDurationMinutes(service.duration_minutes)}</span>
               </div>
             </button>
           `).join("")}
@@ -1803,7 +1813,7 @@ function renderSelectedSummary() {
     <div class="selected-summary-row"><span>${serviceBundle.ids.length > 1 ? "שירותים" : "שירות"}</span><strong>${serviceBundle.name}</strong></div>
     <div class="selected-summary-row"><span>כמה שירותים</span><strong>${serviceBundle.ids.length}</strong></div>
     <div class="selected-summary-row"><span>מחיר כולל</span><strong>${formatPrice(serviceBundle.price)}</strong></div>
-    <div class="selected-summary-row"><span>משך כולל</span><strong>${formatDurationMinutes(serviceBundle.duration)}</strong></div>
+    <div class="selected-summary-row"><span>משך כולל</span><strong>${formatDurationMinutes(serviceBundle.duration_minutes)}</strong></div>
     <div class="selected-summary-row"><span>צוות</span><strong>${staff.name}</strong></div>
     ${uiState.replacementBookingId ? '<div class="selected-summary-row"><span>מצב</span><strong>שינוי תור קיים</strong></div>' : ""}
   `;
@@ -1817,7 +1827,7 @@ function renderBookingSummary() {
 
   bookingSummaryCard.innerHTML = `
     <div class="summary-row"><span>${serviceBundle?.ids.length > 1 ? "שירותים" : "שירות"}</span><strong>${serviceBundle ? serviceBundle.name : "-"}</strong></div>
-    <div class="summary-row"><span>משך כולל</span><strong>${serviceBundle ? formatDurationMinutes(serviceBundle.duration) : "-"}</strong></div>
+    <div class="summary-row"><span>משך כולל</span><strong>${serviceBundle ? formatDurationMinutes(serviceBundle.duration_minutes) : "-"}</strong></div>
     <div class="summary-row"><span>מחיר כולל</span><strong>${serviceBundle ? formatPrice(serviceBundle.price) : "-"}</strong></div>
     <div class="summary-row"><span>אשת צוות</span><strong>${staff ? staff.name : "-"}</strong></div>
     <div class="summary-row"><span>תאריך</span><strong>${dateText}</strong></div>
@@ -1901,7 +1911,7 @@ function getAvailableSlots(dateValue, serviceSelection = getSelectedServiceIds()
   const interval = Number(workDay.slot_interval_minutes || 30);
   const slots = [];
 
-  for (let start = openMinutes; start + Number(serviceBundle.duration) <= closeMinutes; start += interval) {
+  for (let start = openMinutes; start + Number(serviceBundle.duration_minutes) <= closeMinutes; start += interval) {
     const slotTime = formatMinutesToTime(start);
 
     if (dateValue === todayDate() && isPastTime(dateValue, slotTime)) {
@@ -1912,7 +1922,7 @@ function getAvailableSlots(dateValue, serviceSelection = getSelectedServiceIds()
       continue;
     }
 
-    const assignableStaffIds = getAssignableStaffIds(dateValue, start, Number(serviceBundle.duration));
+    const assignableStaffIds = getAssignableStaffIds(dateValue, start, Number(serviceBundle.duration_minutes));
     if (assignableStaffIds.includes(staffId)) {
       slots.push(slotTime);
     }
@@ -2619,7 +2629,7 @@ function renderEditors() {
         <input type="text" value="${service.name}" data-service-field="name">
         <input type="text" value="${service.category}" data-service-field="category">
         <input type="number" min="0" value="${service.price}" data-service-field="price">
-        <input type="number" min="5" step="5" value="${service.duration}" data-service-field="duration">
+        <input type="number" min="5" step="5" value="${service.duration_minutes}" data-service-field="duration_minutes">
         <button class="danger-button remove-service-button" type="button">׳׳—׳™׳§׳”</button>
       </div>
     `)
@@ -2880,7 +2890,7 @@ function applyNoShowCounterChange(booking, nextArrivalStatus) {
 
 function resolveAssignedStaff(dateValue, timeValue, service) {
   const startMinutes = parseTimeToMinutes(timeValue);
-  const assignableStaffIds = getAssignableStaffIds(dateValue, startMinutes, Number(service.duration));
+  const assignableStaffIds = getAssignableStaffIds(dateValue, startMinutes, Number(service.duration_minutes));
 
   return getRealStaffMembers().find((staff) => staff.id === uiState.selectedStaffId && assignableStaffIds.includes(staff.id)) || null;
 }
@@ -3413,7 +3423,7 @@ addServiceButton.addEventListener("click", () => {
     category: "׳§׳˜׳’׳•׳¨׳™׳” ׳¨׳׳©׳™׳×",
     name: "׳©׳™׳¨׳•׳× ׳—׳“׳©",
     price: 0,
-    duration: 30
+    duration_minutes: 30
   });
   saveState();
   rerenderAll();
@@ -3450,7 +3460,7 @@ servicesForm.addEventListener("submit", (event) => {
     name: String(row.querySelector('[data-service-field="name"]').value).trim(),
     category: String(row.querySelector('[data-service-field="category"]').value).trim(),
     price: Number(row.querySelector('[data-service-field="price"]').value),
-    duration: Number(row.querySelector('[data-service-field="duration"]').value)
+    duration_minutes: Number(row.querySelector('[data-service-field="duration_minutes"]').value)
   }));
   saveState();
   rerenderAll();

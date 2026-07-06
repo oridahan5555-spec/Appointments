@@ -106,7 +106,7 @@
       category: String(service?.category || "").trim() || "קטגוריה ראשית",
       name: String(service?.name || "").trim() || `שירות ${index + 1}`,
       price: Number(service?.price || 0),
-      duration_minutes: Number(service?.duration || service?.duration_minutes || 30),
+      duration_minutes: Number(service?.duration_minutes || 30),
       is_active: service?.is_active !== false,
       display_order: index
     }));
@@ -118,7 +118,7 @@
       category: row.category || "",
       name: row.name || "",
       price: Number(row.price || 0),
-      duration: Number(row.duration_minutes || 30),
+      duration_minutes: Number(row.duration_minutes || 30),
       is_active: row.is_active !== false
     }));
   }

@@ -56,9 +56,9 @@ const DEFAULT_DATA = {
     password: "1234"
   },
   services: [
-    { id: "service-1", category: "קטגוריה ראשית", name: "שירות לדוגמה 1", price: 150, duration: 60 },
-    { id: "service-2", category: "קטגוריה ראשית", name: "שירות לדוגמה 2", price: 220, duration: 90 },
-    { id: "service-3", category: "קטגוריה נוספת", name: "שירות לדוגמה 3", price: 80, duration: 30 }
+    { id: "service-1", category: "קטגוריה ראשית", name: "שירות לדוגמה 1", price: 150, duration_minutes: 60 },
+    { id: "service-2", category: "קטגוריה ראשית", name: "שירות לדוגמה 2", price: 220, duration_minutes: 90 },
+    { id: "service-3", category: "קטגוריה נוספת", name: "שירות לדוגמה 3", price: 80, duration_minutes: 30 }
   ],
   staff: [DEFAULT_OWNER_STAFF],
   workingHours: [
@@ -184,7 +184,7 @@ function loadState() {
         ...defaults.sellerCredentials,
         ...(parsed.sellerCredentials || {})
       },
-      services: Array.isArray(parsed.services) && parsed.services.length ? parsed.services : defaults.services,
+      services: normalizeServices(Array.isArray(parsed.services) && parsed.services.length ? parsed.services : defaults.services),
       staff: Array.isArray(parsed.staff) && parsed.staff.length ? parsed.staff : defaults.staff,
       workingHours: Array.isArray(parsed.workingHours) && parsed.workingHours.length ? parsed.workingHours : defaults.workingHours,
       specialHours: normalizeSpecialHours(parsed.specialHours),
@@ -377,7 +377,7 @@ function resetStateToDefaultTemplate() {
 
   state.business = normalizeBusiness(freshState.business);
   state.sellerCredentials = { ...freshState.sellerCredentials };
-  state.services = freshState.services.map((service) => ({ ...service }));
+  state.services = normalizeServices(freshState.services);
   state.staff = normalizeStaff();
   state.workingHours = freshState.workingHours.map((item) => ({ ...item }));
   state.specialHours = [];
@@ -428,6 +428,16 @@ function normalizeBusiness(business) {
     ...(business?.features || {})
   };
   return normalized;
+}
+
+function normalizeServices(services) {
+  return (Array.isArray(services) ? services : []).map((service) => {
+    const { duration, ...rest } = service || {};
+    return {
+      ...rest,
+      duration_minutes: Number(service?.duration_minutes ?? duration ?? 30)
+    };
+  });
 }
 
 function getWorkingDaysMode() {
@@ -505,7 +515,7 @@ function normalizeBookings(bookings, staff, services) {
       service_ids: normalizedServiceIds,
       service_names: normalizedServiceNames,
       service_name: String(booking.service_name || normalizedServiceNames.join(" + ") || service?.name || "").trim(),
-      duration_minutes: Number(booking.duration_minutes || service?.duration || 30),
+      duration_minutes: Number(booking.duration_minutes || service?.duration_minutes || 30),
       arrival_status: normalizeArrivalStatus(booking.arrival_status, booking.status),
       attendance_confirmation_requested_at: String(booking.attendance_confirmation_requested_at || ""),
       attendance_confirmation_status: normalizeAttendanceConfirmationStatus(booking.attendance_confirmation_status),
@@ -2136,7 +2146,7 @@ function renderEditors() {
         <input type="text" value="${service.name}" data-service-field="name">
         <input type="text" value="${service.category}" data-service-field="category">
         <input type="number" min="0" value="${service.price}" data-service-field="price">
-        <input type="number" min="5" step="5" value="${service.duration}" data-service-field="duration">
+        <input type="number" min="5" step="5" value="${service.duration_minutes}" data-service-field="duration_minutes">
         <button class="danger-button remove-service-button" type="button">מחיקה</button>
       </div>
     `)
@@ -3203,7 +3213,7 @@ addServiceButton.addEventListener("click", () => {
     category: "קטגוריה ראשית",
     name: "שירות חדש",
     price: 0,
-    duration: 30
+    duration_minutes: 30
   });
   saveState();
   rerenderAll();
@@ -3233,7 +3243,7 @@ servicesForm.addEventListener("submit", (event) => {
     name: String(row.querySelector('[data-service-field="name"]').value).trim(),
     category: String(row.querySelector('[data-service-field="category"]').value).trim(),
     price: Number(row.querySelector('[data-service-field="price"]').value),
-    duration: Number(row.querySelector('[data-service-field="duration"]').value)
+    duration_minutes: Number(row.querySelector('[data-service-field="duration_minutes"]').value)
   }));
   saveState();
   rerenderAll();
