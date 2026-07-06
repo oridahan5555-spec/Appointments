@@ -338,6 +338,7 @@ select * from (
     (2, 'שלישי', '15:00'::time, '20:00'::time, 30, false),
     (3, 'רביעי', null::time, null::time, 30, true),
     (4, 'חמישי', '15:30'::time, '20:00'::time, 30, false),
-    (5, 'שישי', null::time, null::time, 30, true)
+    (5, 'שישי', null::time, null::time, 30, true),
+    (6, 'שבת', null::time, null::time, 30, true)
 ) as seed(day_of_week, day_label, opens_at, closes_at, slot_interval_minutes, is_closed)
 where not exists (select 1 from working_hours);
