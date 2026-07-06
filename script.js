@@ -1097,7 +1097,11 @@ function isBusinessFeatureEnabled(featureName) {
 }
 
 function formatPrice(price) {
-  return `ג‚×${Number(price)}`;
+  return `₪${Number(price)}`;
+}
+
+function formatDurationMinutes(minutes) {
+  return `${Number(minutes)} דקות`;
 }
 
 function formatStatus(status) {
@@ -1764,7 +1768,7 @@ function renderServices() {
                 <span class="service-card-check" aria-hidden="true"></span>
               </div>
               <div class="service-card-meta">
-                <span>${formatPrice(service.price)} | ${service.duration} ׳“׳§׳•׳×</span>
+                <span>${formatPrice(service.price)} | ${formatDurationMinutes(service.duration)}</span>
               </div>
             </button>
           `).join("")}
@@ -1796,12 +1800,12 @@ function renderSelectedSummary() {
   }
 
   selectedSummary.innerHTML = `
-    <div class="selected-summary-row"><span>${serviceBundle.ids.length > 1 ? "׳©׳™׳¨׳•׳×׳™׳" : "׳©׳™׳¨׳•׳×"}</span><strong>${serviceBundle.name}</strong></div>
-    <div class="selected-summary-row"><span>׳›׳׳” ׳©׳™׳¨׳•׳×׳™׳</span><strong>${serviceBundle.ids.length}</strong></div>
-    <div class="selected-summary-row"><span>׳׳—׳™׳¨ ׳›׳•׳׳</span><strong>${formatPrice(serviceBundle.price)}</strong></div>
-    <div class="selected-summary-row"><span>׳׳©׳ ׳›׳•׳׳</span><strong>${serviceBundle.duration} ׳“׳§׳•׳×</strong></div>
-    <div class="selected-summary-row"><span>׳¦׳•׳•׳×</span><strong>${staff.name}</strong></div>
-    ${uiState.replacementBookingId ? '<div class="selected-summary-row"><span>׳׳¦׳‘</span><strong>׳©׳™׳ ׳•׳™ ׳×׳•׳¨ ׳§׳™׳™׳</strong></div>' : ""}
+    <div class="selected-summary-row"><span>${serviceBundle.ids.length > 1 ? "שירותים" : "שירות"}</span><strong>${serviceBundle.name}</strong></div>
+    <div class="selected-summary-row"><span>כמה שירותים</span><strong>${serviceBundle.ids.length}</strong></div>
+    <div class="selected-summary-row"><span>מחיר כולל</span><strong>${formatPrice(serviceBundle.price)}</strong></div>
+    <div class="selected-summary-row"><span>משך כולל</span><strong>${formatDurationMinutes(serviceBundle.duration)}</strong></div>
+    <div class="selected-summary-row"><span>צוות</span><strong>${staff.name}</strong></div>
+    ${uiState.replacementBookingId ? '<div class="selected-summary-row"><span>מצב</span><strong>שינוי תור קיים</strong></div>' : ""}
   `;
 }
 
@@ -1812,13 +1816,13 @@ function renderBookingSummary() {
   const timeText = uiState.selectedTime || "-";
 
   bookingSummaryCard.innerHTML = `
-    <div class="summary-row"><span>${serviceBundle?.ids.length > 1 ? "׳©׳™׳¨׳•׳×׳™׳" : "׳©׳™׳¨׳•׳×"}</span><strong>${serviceBundle ? serviceBundle.name : "-"}</strong></div>
-    <div class="summary-row"><span>׳׳©׳ ׳›׳•׳׳</span><strong>${serviceBundle ? `${serviceBundle.duration} ׳“׳§׳•׳×` : "-"}</strong></div>
-    <div class="summary-row"><span>׳׳—׳™׳¨ ׳›׳•׳׳</span><strong>${serviceBundle ? formatPrice(serviceBundle.price) : "-"}</strong></div>
-    <div class="summary-row"><span>׳׳©׳× ׳¦׳•׳•׳×</span><strong>${staff ? staff.name : "-"}</strong></div>
-    <div class="summary-row"><span>׳×׳׳¨׳™׳</span><strong>${dateText}</strong></div>
-    <div class="summary-row"><span>׳©׳¢׳”</span><strong>${timeText}</strong></div>
-    ${uiState.replacementBookingId ? '<div class="summary-row"><span>׳¡׳•׳’ ׳₪׳¢׳•׳׳”</span><strong>׳©׳™׳ ׳•׳™ ׳×׳•׳¨ ׳§׳™׳™׳</strong></div>' : ""}
+    <div class="summary-row"><span>${serviceBundle?.ids.length > 1 ? "שירותים" : "שירות"}</span><strong>${serviceBundle ? serviceBundle.name : "-"}</strong></div>
+    <div class="summary-row"><span>משך כולל</span><strong>${serviceBundle ? formatDurationMinutes(serviceBundle.duration) : "-"}</strong></div>
+    <div class="summary-row"><span>מחיר כולל</span><strong>${serviceBundle ? formatPrice(serviceBundle.price) : "-"}</strong></div>
+    <div class="summary-row"><span>אשת צוות</span><strong>${staff ? staff.name : "-"}</strong></div>
+    <div class="summary-row"><span>תאריך</span><strong>${dateText}</strong></div>
+    <div class="summary-row"><span>שעה</span><strong>${timeText}</strong></div>
+    ${uiState.replacementBookingId ? '<div class="summary-row"><span>סוג פעולה</span><strong>שינוי תור קיים</strong></div>' : ""}
   `;
 }
 
