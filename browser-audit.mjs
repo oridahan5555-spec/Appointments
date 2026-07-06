@@ -304,7 +304,7 @@ try {
       serviceIds: state.bookings[0]?.service_ids?.length || 0,
       serviceName: state.bookings[0]?.service_name || '',
       totalDuration: state.bookings[0]?.duration_minutes || 0,
-      expectedDuration: (state.services[0]?.duration || 0) + (state.services[1]?.duration || 0),
+      expectedDuration: (state.services[0]?.duration_minutes || 0) + (state.services[1]?.duration_minutes || 0),
       ownerNotifications: state.notifications.filter((item) => item.user_id === 'owner' && item.type === 'appointment_booked').length,
       success: !bookingSuccessPanel.classList.contains('is-hidden')
     })`);
@@ -605,7 +605,7 @@ try {
           notes: '',
           booking_date: waitDate,
           booking_time: '10:00',
-          duration_minutes: Number(service.duration || 30),
+          duration_minutes: Number(service.duration_minutes || 30),
           status: 'approved',
           arrival_status: 'waiting',
           attendance_confirmation_requested_at: '',
@@ -695,7 +695,7 @@ try {
           notes: 'אישור הגעה',
           booking_date: targetDate,
           booking_time: '11:00',
-          duration_minutes: Number(service.duration || 60),
+          duration_minutes: Number(service.duration_minutes || 60),
           status: 'approved',
           arrival_status: 'waiting',
           attendance_confirmation_requested_at: '',
