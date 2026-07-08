@@ -20,6 +20,11 @@
   }
 
   function normalizeNotification(item) {
+    let metadata = item?.metadata;
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      metadata = {};
+    }
+
     return {
       id: String(item?.id || createNotificationId()),
       title: String(item?.title || "התראה חדשה").trim(),
@@ -27,7 +32,11 @@
       created_at: String(item?.created_at || new Date().toISOString()),
       is_read: Boolean(item?.is_read ?? item?.read),
       user_id: String(item?.user_id || item?.userId || "").trim(),
-      type: String(item?.type || "general").trim()
+      type: String(item?.type || "general").trim(),
+      booking_id: String(item?.booking_id || item?.bookingId || metadata.booking_id || "").trim(),
+      action_url: String(item?.action_url || item?.actionUrl || "").trim(),
+      event_key: String(item?.event_key || item?.eventKey || "").trim(),
+      metadata: { ...metadata }
     };
   }
 
@@ -69,11 +78,24 @@
       appointment_cancelled: "ביטול תור",
       appointment_rescheduled: "שינוי תור",
       appointment_updated: "עדכון תור",
+      appointment_rejected: "דחיית תור",
+      booking_created: "התור התקבל",
+      booking_approved: "התור אושר",
+      booking_rejected: "התור נדחה",
+      booking_cancelled: "התור בוטל",
+      attendance_confirmed: "אישור הגעה",
+      attendance_declined: "אי הגעה",
+      waitlist_joined: "רשימת המתנה",
+      waitlist_opened: "התפנה מקום",
+      reminder: "תזכורת לתור",
       browser: "דפדפן",
       general: "כללי"
     };
 
-    return labels[type] || "התראה";
+    if (String(type).startsWith("booking_changed_")) {
+      return "שינוי תור";
+    }
+    return labels[type] || labels[String(type).split(":")[0]] || "התראה";
   }
 
   function createNoopCenter() {
@@ -244,6 +266,7 @@
     const subtitle = root.querySelector(".notification-panel-subtitle");
     const markAllButton = root.querySelector(".notification-mark-all-button");
     const browserSeenIds = new Set();
+    const pendingActions = new Set();
 
     function getCurrentUserId() {
       return String(options.getUserId?.() || "").trim();
@@ -353,11 +376,16 @@
     function renderList() {
       const notifications = getCurrentUserNotifications();
       const unreadCount = notifications.filter((notification) => !notification.is_read).length;
+      const pendingCount = Math.max(0, Number(options.getPendingCount?.() || 0));
+      const badgeCount = pendingCount || unreadCount;
 
-      badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
-      badge.classList.toggle("is-hidden", unreadCount === 0);
-      subtitle.textContent = unreadCount
-        ? `${unreadCount} התראות שלא נקראו`
+      badge.textContent = badgeCount > 99 ? "99+" : String(badgeCount);
+      badge.classList.toggle("is-hidden", badgeCount === 0);
+      badge.title = pendingCount ? `${pendingCount} תורים ממתינים לאישור` : `${unreadCount} התראות שלא נקראו`;
+      subtitle.textContent = pendingCount
+        ? `${pendingCount} תורים ממתינים לאישור${unreadCount ? ` · ${unreadCount} לא נקראו` : ""}`
+        : unreadCount
+          ? `${unreadCount} התראות שלא נקראו`
         : notifications.length
           ? "כל ההתראות נקראו"
           : "אין התראות עדיין";
@@ -374,8 +402,36 @@
       }
 
       list.innerHTML = notifications
-        .map((notification) => `
-          <article class="notification-item ${notification.is_read ? "" : "is-unread"}" data-notification-id="${escapeHtml(notification.id)}">
+        .map((notification) => {
+          const isOwner = Boolean(options.isOwnerLoggedIn?.());
+          const hasBooking = Boolean(notification.booking_id);
+          const isPendingBooking = hasBooking && ["appointment_booked", "appointment_rescheduled"].includes(notification.type);
+          const isCancelledBooking = hasBooking && ["appointment_cancelled", "booking_cancelled"].includes(notification.type);
+          const customerBookingEvent = hasBooking && /^(booking_|appointment_|reminder)/.test(notification.type);
+          const canConfirmAttendance = options.canConfirmAttendance?.(notification) ?? !isCancelledBooking;
+          const canCancelBooking = options.canCancelBooking?.(notification) ?? !isCancelledBooking;
+          const actionButtons = [];
+
+          if (hasBooking) {
+            actionButtons.push(`<button class="ghost-button" type="button" data-notification-action="open-booking" data-notification-id="${escapeHtml(notification.id)}">צפייה בתור</button>`);
+          }
+          if (isOwner && isPendingBooking) {
+            actionButtons.push(`<button class="primary-button" type="button" data-notification-action="approve-booking" data-notification-id="${escapeHtml(notification.id)}">אישור תור</button>`);
+            actionButtons.push(`<button class="danger-button" type="button" data-notification-action="reject-booking" data-notification-id="${escapeHtml(notification.id)}">דחיית תור</button>`);
+          } else if (isOwner && isCancelledBooking) {
+            actionButtons.push(`<button class="ghost-button" type="button" data-notification-action="open-free-slot" data-notification-id="${escapeHtml(notification.id)}">פתיחת השעה שהתפנתה</button>`);
+          } else if (!isOwner && customerBookingEvent) {
+            if (canConfirmAttendance) {
+              actionButtons.push(`<button class="primary-button" type="button" data-notification-action="confirm-attendance" data-notification-id="${escapeHtml(notification.id)}">אישור הגעה עכשיו</button>`);
+            }
+            if (canCancelBooking) {
+              actionButtons.push(`<button class="danger-button" type="button" data-notification-action="cancel-booking" data-notification-id="${escapeHtml(notification.id)}">ביטול תור</button>`);
+            }
+            actionButtons.push(`<button class="ghost-button" type="button" data-notification-action="add-calendar" data-notification-id="${escapeHtml(notification.id)}">הוספה ליומן</button>`);
+          }
+
+          return `
+          <article class="notification-item ${notification.is_read ? "" : "is-unread"} ${hasBooking ? "has-booking-link" : ""}" data-notification-id="${escapeHtml(notification.id)}">
             <div class="notification-item-main">
               <div class="notification-item-topline">
                 <span class="notification-type">${escapeHtml(getTypeLabel(notification.type))}</span>
@@ -385,6 +441,7 @@
               <p>${escapeHtml(notification.message)}</p>
             </div>
             <div class="notification-actions">
+              ${actionButtons.join("")}
               ${
                 notification.is_read
                   ? ""
@@ -393,7 +450,8 @@
               <button class="danger-button" type="button" data-notification-action="delete" data-notification-id="${escapeHtml(notification.id)}">מחיקה</button>
             </div>
           </article>
-        `)
+        `;
+        })
         .join("");
     }
 
@@ -473,7 +531,11 @@
 
         browserNotification.onclick = () => {
           window.focus();
-          setPanelOpen(true);
+          if (notification.booking_id && typeof options.onOpenBooking === "function") {
+            Promise.resolve(options.onOpenBooking(notification)).catch((error) => options.onError?.(error));
+          } else {
+            setPanelOpen(true);
+          }
         };
       } catch (error) {
         // Some browsers block notifications on non-secure origins.
@@ -561,7 +623,7 @@
       setPanelOpen(panel.classList.contains("is-hidden"));
     });
 
-    root.addEventListener("click", (event) => {
+    root.addEventListener("click", async (event) => {
       const actionButton = event.target.closest("[data-notification-action]");
       if (!actionButton) {
         return;
@@ -569,6 +631,7 @@
 
       const action = actionButton.dataset.notificationAction;
       const notificationId = actionButton.dataset.notificationId;
+      const notification = getCurrentUserNotifications().find((item) => item.id === notificationId);
 
       if (action === "mark-all") {
         void markAllAsRead();
@@ -582,6 +645,35 @@
 
       if (action === "delete" && notificationId) {
         void deleteNotification(notificationId);
+        return;
+      }
+
+      const actionHandlers = {
+        "open-booking": options.onOpenBooking,
+        "approve-booking": options.onApproveBooking,
+        "reject-booking": options.onRejectBooking,
+        "open-free-slot": options.onOpenFreeSlot,
+        "confirm-attendance": options.onConfirmAttendance,
+        "cancel-booking": options.onCancelBooking,
+        "add-calendar": options.onAddCalendar
+      };
+      const handler = actionHandlers[action];
+      if (!notification || typeof handler !== "function" || pendingActions.has(`${action}:${notification.id}`)) {
+        return;
+      }
+
+      const pendingKey = `${action}:${notification.id}`;
+      pendingActions.add(pendingKey);
+      actionButton.disabled = true;
+      try {
+        await markAsRead(notification.id);
+        await handler(notification);
+        setPanelOpen(false);
+      } catch (error) {
+        options.onError?.(error);
+      } finally {
+        pendingActions.delete(pendingKey);
+        actionButton.disabled = false;
       }
     });
 

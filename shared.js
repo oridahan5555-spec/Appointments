@@ -846,6 +846,12 @@ function pushAppNotification(userId, title, message, type, config = {}) {
     return null;
   }
 
+  // With Supabase, database triggers are the single source of truth. Creating the
+  // same notification in the browser would duplicate it on every synced device.
+  if (typeof supabaseEnabled !== "undefined" && supabaseEnabled) {
+    return null;
+  }
+
   return notificationCenter.notify(
     {
       user_id: userId,
@@ -880,6 +886,10 @@ function requestAttendanceConfirmation(booking, options = {}) {
 
 function runAttendanceConfirmationSweep() {
   if (state.business.features?.attendanceConfirmation === false) {
+    return;
+  }
+
+  if (typeof supabaseEnabled !== "undefined" && supabaseEnabled) {
     return;
   }
 

@@ -283,7 +283,11 @@
       user_id: String(item?.user_id || "").trim(),
       type: String(item?.type || "general").trim(),
       is_read: Boolean(item?.is_read ?? item?.read),
-      created_at: item?.created_at || undefined
+      created_at: item?.created_at || undefined,
+      booking_id: isUuid(item?.booking_id) ? item.booking_id : null,
+      action_url: String(item?.action_url || "").trim() || null,
+      metadata: item?.metadata && typeof item.metadata === "object" ? item.metadata : {},
+      event_key: String(item?.event_key || "").trim() || null
     };
   }
 
@@ -295,7 +299,11 @@
       created_at: row.created_at || new Date().toISOString(),
       is_read: Boolean(row.is_read),
       user_id: row.user_id || "",
-      type: row.type || "general"
+      type: row.type || "general",
+      booking_id: row.booking_id || "",
+      action_url: row.action_url || "",
+      metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
+      event_key: row.event_key || ""
     };
   }
 
@@ -763,6 +771,58 @@
     if (error) throw error;
   }
 
+  async function requestBookingAttendance(bookingId) {
+    const supabase = ensureClient();
+    const { error } = await supabase.rpc("request_booking_attendance_confirmation", {
+      p_booking_id: bookingId
+    });
+    if (error) throw error;
+  }
+
+  function getBookingEmailActionUrl(token, action = "view", format = "json") {
+    const baseUrl = String(config.url || "").replace(/\/$/, "");
+    const params = new URLSearchParams();
+    if (token) params.set("token", String(token));
+    if (action) params.set("action", String(action));
+    if (format) {
+      params.set("format", format);
+    }
+    const query = params.toString();
+    return `${baseUrl}/functions/v1/booking-email-action${query ? `?${query}` : ""}`;
+  }
+
+  async function loadBookingFromEmailToken(token) {
+    const response = await fetch(getBookingEmailActionUrl(token, "view", "json"), {
+      headers: { Accept: "application/json" }
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.message || "הקישור לתור אינו תקין או שפג תוקפו.");
+    }
+    return payload?.booking || payload;
+  }
+
+  async function performBookingEmailAction(token, action) {
+    if (!["confirm", "cancel"].includes(action)) {
+      throw new Error("פעולת האימייל אינה תקינה.");
+    }
+    const response = await fetch(getBookingEmailActionUrl("", "", ""), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ token: String(token || ""), action })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = payload?.error === "used"
+        ? "הפעולה הזאת כבר בוצעה."
+        : payload?.error === "not_allowed"
+          ? "אי אפשר לבצע את הפעולה במצב הנוכחי של התור."
+          : "הקישור אינו תקין או שפג תוקפו.";
+      throw new Error(message);
+    }
+    return payload;
+  }
+
   async function joinWaitlist(payload) {
     const supabase = ensureClient();
     const { error } = await supabase.rpc("join_waitlist_public", {
@@ -902,6 +962,10 @@
     cancelMyBooking,
     hideMyBooking,
     respondAttendance,
+    requestBookingAttendance,
+    getBookingEmailActionUrl,
+    loadBookingFromEmailToken,
+    performBookingEmailAction,
     joinWaitlist,
     syncOwnerState,
     bootstrapOwnerDataFromLocal,

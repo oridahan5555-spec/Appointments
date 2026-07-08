@@ -1,0 +1,5 @@
+[functions.send-booking-emails]
+verify_jwt = false
+
+[functions.booking-email-action]
+verify_jwt = false

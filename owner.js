@@ -159,6 +159,11 @@ const notificationCenter = window.AppNotifications?.create({
   onMarkAllAsRead: (userId) => supabaseEnabled ? supabaseApi.markAllNotificationsRead(userId) : true,
   onDeleteNotification: (notificationId) => supabaseEnabled ? supabaseApi.deleteNotification(notificationId) : true,
   onCreateNotification: (notification) => supabaseEnabled ? supabaseApi.createNotification(notification) : notification,
+  getPendingCount: () => state.bookings.filter((booking) => booking.status === "pending").length,
+  onOpenBooking: (notification) => focusOwnerBooking(notification.booking_id),
+  onApproveBooking: (notification) => runOwnerBookingAction(notification.booking_id, "approve-booking-button"),
+  onRejectBooking: (notification) => runOwnerBookingAction(notification.booking_id, "reject-booking-button"),
+  onOpenFreeSlot: (notification) => openFreedOwnerSlot(notification),
   onError: (error) => appUi.toast(error?.message || "לא הצלחנו לעדכן את ההתראה.", { variant: "error" }),
   browser: true
 });
@@ -169,6 +174,61 @@ const appUi = window.AppUi || {
 };
 
 const OWNER_LOGIN_NAME = String(supabaseApi?.getOwnerLoginName?.() || "admin").trim() || "admin";
+
+function focusOwnerBooking(bookingId) {
+  const booking = findBookingById(String(bookingId || ""));
+  if (!booking) {
+    throw new Error("התור כבר לא זמין או שאין הרשאה לצפות בו.");
+  }
+
+  uiState.ownerBookingsFilter = "all";
+  renderSellerBookings();
+  const card = sellerBookingsList.querySelector(`[data-booking-card-id="${booking.id}"]`);
+  if (!card) {
+    return;
+  }
+
+  card.classList.add("is-notification-target");
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  window.setTimeout(() => card.classList.remove("is-notification-target"), 2200);
+}
+
+function runOwnerBookingAction(bookingId, buttonClass) {
+  focusOwnerBooking(bookingId);
+  const button = sellerBookingsList.querySelector(`.${buttonClass}[data-booking-id="${bookingId}"]`);
+  if (!button) {
+    throw new Error("הפעולה הזאת כבר בוצעה או שהתור אינו ממתין לאישור.");
+  }
+  button.click();
+}
+
+function openFreedOwnerSlot(notification) {
+  const booking = findBookingById(notification.booking_id);
+  const dateValue = booking?.booking_date || notification.metadata?.booking_date;
+  if (!dateValue) {
+    throw new Error("לא נמצא התאריך של השעה שהתפנתה.");
+  }
+
+  uiState.sellerCalendarDate = dateValue;
+  uiState.sellerCalendarMonthKey = dateValue.slice(0, 7);
+  renderSellerCalendar();
+  sellerCalendarList.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function focusOwnerBookingFromUrl() {
+  const bookingId = new URLSearchParams(window.location.search).get("booking");
+  if (!bookingId || !findBookingById(bookingId)) {
+    if (window.location.hash === "#ownerWaitlistSection") {
+      document.getElementById("ownerWaitlistSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    return;
+  }
+
+  focusOwnerBooking(bookingId);
+  const url = new URL(window.location.href);
+  url.searchParams.delete("booking");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
 
 function loadState() {
   const defaults = structuredClone(DEFAULT_DATA);
@@ -309,6 +369,7 @@ async function refreshOwnerStateFromSupabase({ silent = false } = {}) {
     ownerLoadedFromSupabase = true;
     saveState();
     rerenderAll();
+    window.setTimeout(focusOwnerBookingFromUrl, 0);
     notificationCenter?.showNewBrowserNotifications();
   } catch (error) {
     ownerLoadedFromSupabase = false;
@@ -1244,7 +1305,7 @@ function renderSellerCalendar() {
 
   const bookingCards = dailyBookings
     .map((booking) => `
-      <article class="booking-card status-card-${booking.status}">
+      <article class="booking-card status-card-${booking.status}" data-booking-card-id="${booking.id}">
         <div class="booking-card-head">
           <strong>${booking.booking_time}</strong>
           <div class="booking-card-badges">
@@ -1364,7 +1425,7 @@ function renderSellerBookings() {
 
   sellerBookingsList.innerHTML = filteredBookings
     .map((booking) => `
-      <article class="booking-card status-card-${booking.status}">
+      <article class="booking-card status-card-${booking.status}" data-booking-card-id="${booking.id}">
         <div class="booking-card-head">
           <strong>${booking.customer_first_name} ${booking.customer_last_name}</strong>
           <div class="booking-card-badges">
@@ -2010,7 +2071,15 @@ sellerCalendarList.addEventListener("click", async (event) => {
   }
 
   if (target.classList.contains("send-attendance-confirmation-button")) {
-    if (requestAttendanceConfirmation(booking, { force: true })) {
+    if (supabaseEnabled) {
+      try {
+        await supabaseApi.requestBookingAttendance(booking.id);
+        await refreshOwnerStateFromSupabase({ silent: true });
+        appUi.toast("נשלחה בקשת אישור הגעה ללקוחה.", { variant: "success" });
+      } catch (error) {
+        appUi.toast(error?.message || "לא הצלחנו לשלוח בקשת אישור הגעה.", { variant: "error" });
+      }
+    } else if (requestAttendanceConfirmation(booking, { force: true })) {
       saveState();
       rerenderAll();
       appUi.toast("נשלחה בקשת אישור הגעה ללקוחה.", { variant: "success" });
@@ -2359,7 +2428,15 @@ sellerBookingsList.addEventListener("click", async (event) => {
   }
 
   if (target.classList.contains("send-attendance-confirmation-button")) {
-    if (requestAttendanceConfirmation(booking, { force: true })) {
+    if (supabaseEnabled) {
+      try {
+        await supabaseApi.requestBookingAttendance(booking.id);
+        await refreshOwnerStateFromSupabase({ silent: true });
+        appUi.toast("נשלחה בקשת אישור הגעה ללקוחה.", { variant: "success" });
+      } catch (error) {
+        appUi.toast(error?.message || "לא הצלחנו לשלוח בקשת אישור הגעה.", { variant: "error" });
+      }
+    } else if (requestAttendanceConfirmation(booking, { force: true })) {
       saveState();
       rerenderAll();
       appUi.toast("נשלחה בקשת אישור הגעה ללקוחה.", { variant: "success" });

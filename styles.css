@@ -451,6 +451,10 @@ a.ghost-button.is-keyboard-pressed {
   transform: translateY(-1px);
 }
 
+.notification-item.has-booking-link {
+  border-inline-start: 4px solid var(--accent);
+}
+
 .notification-item-main {
   display: grid;
   gap: 7px;
@@ -487,10 +491,41 @@ a.ghost-button.is-keyboard-pressed {
 }
 
 .notification-actions .ghost-button,
+.notification-actions .primary-button,
 .notification-actions .danger-button {
   min-height: 38px;
   padding: 8px 11px;
   font-size: 13px;
+}
+
+.booking-card.is-notification-target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft), 0 18px 38px rgba(50, 40, 78, 0.14);
+  animation: notificationTargetPulse 0.7s ease both;
+}
+
+.email-booking-details {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--accent-soft);
+  text-align: start;
+}
+
+.email-booking-details strong {
+  font-size: 18px;
+}
+
+.email-booking-details span {
+  color: var(--muted);
+}
+
+@keyframes notificationTargetPulse {
+  from { transform: translateY(8px); }
+  to { transform: translateY(0); }
 }
 
 .notification-empty-state {

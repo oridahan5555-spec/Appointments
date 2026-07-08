@@ -212,6 +212,12 @@ const notificationCenter = window.AppNotifications?.create({
   onMarkAllAsRead: (userId) => supabaseEnabled ? supabaseApi.markAllNotificationsRead(userId) : true,
   onDeleteNotification: (notificationId) => supabaseEnabled ? supabaseApi.deleteNotification(notificationId) : true,
   onCreateNotification: (notification) => supabaseEnabled ? supabaseApi.createNotification(notification) : notification,
+  onOpenBooking: (notification) => focusCustomerBooking(notification.booking_id),
+  onConfirmAttendance: (notification) => confirmCustomerAttendanceFromNotification(notification.booking_id),
+  onCancelBooking: (notification) => cancelCustomerBookingFromNotification(notification.booking_id),
+  onAddCalendar: (notification) => openCustomerBookingCalendar(notification.booking_id),
+  canConfirmAttendance: (notification) => getOwnedCustomerBooking(notification.booking_id)?.status === "approved",
+  canCancelBooking: (notification) => ["pending", "approved"].includes(getOwnedCustomerBooking(notification.booking_id)?.status),
   onError: (error) => appUi.toast(error?.message || "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳¢׳“׳›׳ ׳׳× ׳”׳”׳×׳¨׳׳”.", { variant: "error" }),
   browser: true
 });
@@ -220,6 +226,169 @@ const appUi = window.AppUi || {
   toast: (message) => console.warn(message),
   confirm: async () => true
 };
+
+function getOwnedCustomerBooking(bookingId) {
+  return getCustomerBookingsForSession().find((booking) => booking.id === String(bookingId || "")) || null;
+}
+
+function focusCustomerBooking(bookingId) {
+  const booking = getOwnedCustomerBooking(bookingId);
+  if (!booking) {
+    throw new Error("התור כבר לא זמין או שאין הרשאה לצפות בו.");
+  }
+
+  uiState.customerBookingsView = getCustomerBookingBucket(booking);
+  renderCustomerBookings();
+  const card = myBookingsList.querySelector(`[data-booking-card-id="${booking.id}"]`);
+  customerBookingsPanel.classList.remove("is-hidden");
+  customerBookingsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (card) {
+    card.classList.add("is-notification-target");
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => card.classList.remove("is-notification-target"), 2200);
+  }
+}
+
+async function confirmCustomerAttendanceFromNotification(bookingId) {
+  const booking = getOwnedCustomerBooking(bookingId);
+  if (!booking || booking.status !== "approved") {
+    throw new Error("אפשר לאשר הגעה רק לתור מאושר ופעיל.");
+  }
+  if (booking.attendance_confirmation_status === "confirmed") {
+    throw new Error("ההגעה לתור הזה כבר אושרה.");
+  }
+
+  if (supabaseEnabled) {
+    await supabaseApi.respondAttendance(booking.id, "confirmed");
+    await refreshStateFromSupabase();
+  } else {
+    booking.attendance_confirmation_status = "confirmed";
+    booking.attendance_confirmation_answered_at = new Date().toISOString();
+    saveState();
+    rerenderAll();
+  }
+  appUi.toast("ההגעה אושרה בהצלחה.", { variant: "success" });
+}
+
+async function cancelCustomerBookingFromNotification(bookingId) {
+  const booking = getOwnedCustomerBooking(bookingId);
+  if (!booking || !["pending", "approved"].includes(booking.status)) {
+    throw new Error("התור הזה כבר אינו פעיל.");
+  }
+  if (!(await appUi.confirm("האם לבטל את התור הזה?", { title: "ביטול תור" }))) {
+    return;
+  }
+
+  if (supabaseEnabled) {
+    await supabaseApi.cancelMyBooking(booking.id);
+    await refreshStateFromSupabase();
+  } else {
+    booking.status = "cancelled";
+    booking.arrival_status = null;
+    saveState();
+    rerenderAll();
+  }
+  appUi.toast("ביטול התור נקלט.", { variant: "success" });
+}
+
+function openCustomerBookingCalendar(bookingId) {
+  const booking = getOwnedCustomerBooking(bookingId);
+  if (!booking) {
+    throw new Error("לא נמצא תור להוספה ליומן.");
+  }
+  openCalendarChoiceModal(booking.id);
+}
+
+function focusCustomerBookingFromUrl() {
+  const bookingId = new URLSearchParams(window.location.search).get("booking");
+  if (!bookingId || !getOwnedCustomerBooking(bookingId)) {
+    return;
+  }
+  focusCustomerBooking(bookingId);
+  const url = new URL(window.location.href);
+  url.searchParams.delete("booking");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function escapePublicHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function showEmailBookingDetails(payload) {
+  document.getElementById("emailBookingDetailsModal")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "emailBookingDetailsModal";
+  overlay.className = "modal email-booking-details-modal";
+  overlay.innerHTML = `
+    <div class="modal-backdrop" data-close-email-booking></div>
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="emailBookingTitle">
+      <h3 id="emailBookingTitle">פרטי התור</h3>
+      <div class="email-booking-details">
+        <strong>${escapePublicHtml(payload.service_name || "שירות")}</strong>
+        <span>${escapePublicHtml(payload.booking_date || "")} בשעה ${escapePublicHtml(payload.booking_time || "")}</span>
+        <span>${escapePublicHtml(payload.business_name || "")}</span>
+        ${payload.business_address ? `<span>${escapePublicHtml(payload.business_address)}</span>` : ""}
+        ${payload.business_phone ? `<span>${escapePublicHtml(payload.business_phone)}</span>` : ""}
+      </div>
+      <button class="primary-button" type="button" data-close-email-booking>סגירה</button>
+    </section>`;
+  overlay.addEventListener("click", (event) => {
+    if (event.target.closest("[data-close-email-booking]")) {
+      overlay.remove();
+    }
+  });
+  document.body.appendChild(overlay);
+}
+
+async function handleEmailEntryLinks() {
+  const url = new URL(window.location.href);
+  const actionResult = url.searchParams.get("emailAction");
+  const emailToken = url.searchParams.get("emailToken");
+  const emailIntent = url.searchParams.get("emailIntent");
+  const emailActionToken = url.searchParams.get("emailActionToken");
+  if (actionResult) {
+    const messages = {
+      confirmed: "ההגעה אושרה בהצלחה.",
+      cancelled: "ביטול התור נקלט בהצלחה.",
+      error: "לא הצלחנו לבצע את הפעולה. ייתכן שהקישור כבר נוצל או שפג תוקפו."
+    };
+    appUi.toast(messages[actionResult] || "הפעולה הושלמה.", { variant: actionResult === "error" ? "error" : "success" });
+    url.searchParams.delete("emailAction");
+  }
+  if (emailToken) {
+    try {
+      const payload = await supabaseApi.loadBookingFromEmailToken(emailToken);
+      showEmailBookingDetails(payload);
+    } catch (error) {
+      appUi.toast(error?.message || "הקישור לתור אינו תקין או שפג תוקפו.", { variant: "error" });
+    }
+    url.searchParams.delete("emailToken");
+  }
+  if (emailActionToken && ["confirm", "cancel"].includes(emailIntent)) {
+    const isConfirmation = emailIntent === "confirm";
+    const approved = await appUi.confirm(
+      isConfirmation ? "לאשר עכשיו שתגיעי לתור?" : "לבטל עכשיו את התור?",
+      { title: isConfirmation ? "אישור הגעה" : "ביטול תור" }
+    );
+    if (approved) {
+      try {
+        await supabaseApi.performBookingEmailAction(emailActionToken, emailIntent);
+        appUi.toast(isConfirmation ? "ההגעה אושרה בהצלחה." : "ביטול התור נקלט בהצלחה.", { variant: "success" });
+        await refreshStateFromSupabase().catch(() => {});
+      } catch (error) {
+        appUi.toast(error?.message || "לא הצלחנו לבצע את הפעולה.", { variant: "error" });
+      }
+    }
+    url.searchParams.delete("emailIntent");
+    url.searchParams.delete("emailActionToken");
+  }
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
 
 function initializeCustomerAuthDom() {
   openCustomerLogin.textContent = "\u05d7\u05e9\u05d1\u05d5\u05df \u05dc\u05e7\u05d5\u05d7";
@@ -533,6 +702,7 @@ async function refreshStateFromSupabase() {
     publicLoadedFromSupabase = true;
     saveState();
     rerenderAll();
+    window.setTimeout(focusCustomerBookingFromUrl, 0);
     notificationCenter?.showNewBrowserNotifications();
   } catch (error) {
     publicLoadedFromSupabase = false;
@@ -1762,7 +1932,7 @@ function renderCustomerBookings() {
       const canRespondAttendance = shouldOfferAttendanceConfirmation(booking);
 
       return `
-        <article class="booking-card status-card-${presentation.statusClass}">
+        <article class="booking-card status-card-${presentation.statusClass}" data-booking-card-id="${booking.id}">
           <div class="booking-card-head">
             <strong>${booking.service_name}</strong>
             <div class="booking-card-badges">
@@ -3248,6 +3418,7 @@ async function initializeApp() {
       await refreshStateFromSupabase();
       setupPersonalRealtimeSubscriptions();
       notificationCenter?.rememberCurrentNotifications();
+      await handleEmailEntryLinks();
       showWizardStep(1);
     } catch (error) {
       clearRealtimeSubscriptions(personalRealtimeCleanups);
