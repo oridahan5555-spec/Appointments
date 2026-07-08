@@ -1,6 +1,7 @@
 const LOCAL_STORAGE_KEY = "booking_app_local_working_v2";
 const SELLER_SESSION_KEY = "booking_app_seller_session_v1";
 const CUSTOMER_SESSION_KEY = "booking_app_customer_session_v1";
+const PENDING_BOOKING_DRAFT_KEY = "booking_app_pending_booking_draft_v1";
 const REJECT_UNDO_WINDOW_MS = 5000;
 const ARRIVAL_STATUS_OPTIONS = ["waiting", "arrived", "finished", "no_show"];
 const supabaseApi = window.AppSupabase || null;
@@ -180,6 +181,7 @@ let customerChooserPanel = null;
 let customerSignupForm = null;
 let customerForgotPasswordButton = null;
 let cancelCustomerRecoveryButton = null;
+let customerEmailConfirmedButton = null;
 let openCustomerSignupButton = null;
 let openCustomerExistingLoginButton = null;
 let backToCustomerChooserFromSignup = null;
@@ -434,11 +436,41 @@ function initializeCustomerAuthDom() {
         </label>
         <label class="field">
           <span>\u05e1\u05d9\u05e1\u05de\u05d4</span>
-          <input type="password" name="password" required>
+          <div class="password-field-control">
+            <input id="customerSignupPassword" type="password" name="password" required>
+            <button
+              class="password-visibility-button"
+              type="button"
+              data-password-toggle="customerSignupPassword"
+              aria-label="\u05d4\u05e6\u05d2\u05ea \u05e1\u05d9\u05e1\u05de\u05d4"
+              title="\u05d4\u05e6\u05d2\u05ea \u05e1\u05d9\u05e1\u05de\u05d4"
+              aria-pressed="false"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
         </label>
         <label class="field">
           <span>\u05d0\u05d9\u05de\u05d5\u05ea \u05e1\u05d9\u05e1\u05de\u05d4</span>
-          <input type="password" name="confirmPassword" required>
+          <div class="password-field-control">
+            <input id="customerSignupConfirmPassword" type="password" name="confirmPassword" required>
+            <button
+              class="password-visibility-button"
+              type="button"
+              data-password-toggle="customerSignupConfirmPassword"
+              aria-label="\u05d4\u05e6\u05d2\u05ea \u05e1\u05d9\u05e1\u05de\u05d4"
+              title="\u05d4\u05e6\u05d2\u05ea \u05e1\u05d9\u05e1\u05de\u05d4"
+              aria-pressed="false"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
         </label>
         <button class="primary-button" type="submit">\u05d9\u05e6\u05d9\u05e8\u05ea \u05d7\u05e9\u05d1\u05d5\u05df</button>
         <button class="ghost-button" id="backToCustomerChooserFromSignup" type="button">\u05d7\u05d6\u05e8\u05d4</button>
@@ -458,6 +490,7 @@ function initializeCustomerAuthDom() {
       <input type="password" name="password" required>
     </label>
     <button class="primary-button" type="submit">\u05db\u05e0\u05d9\u05e1\u05d4</button>
+    <button class="ghost-button is-hidden" id="customerEmailConfirmedButton" type="button">\u05db\u05d1\u05e8 \u05d0\u05d9\u05e9\u05e8\u05ea\u05d9 \u05d1\u05de\u05d9\u05d9\u05dc, \u05d4\u05ea\u05d7\u05d1\u05e8\u05d9 \u05e2\u05db\u05e9\u05d9\u05d5</button>
     <button class="ghost-button" id="customerForgotPasswordButton" type="button">\u05e9\u05db\u05d7\u05ea\u05d9 \u05e1\u05d9\u05e1\u05de\u05d4</button>
     <button class="ghost-button" id="backToCustomerChooserFromLogin" type="button">\u05d7\u05d6\u05e8\u05d4</button>
   `;
@@ -484,12 +517,171 @@ function initializeCustomerAuthDom() {
   customerSignupForm = document.getElementById("customerSignupForm");
   customerForgotPasswordButton = document.getElementById("customerForgotPasswordButton");
   cancelCustomerRecoveryButton = document.getElementById("cancelCustomerRecoveryButton");
+  customerEmailConfirmedButton = document.getElementById("customerEmailConfirmedButton");
   openCustomerSignupButton = document.getElementById("openCustomerSignupButton");
   openCustomerExistingLoginButton = document.getElementById("openCustomerExistingLoginButton");
   backToCustomerChooserFromSignup = document.getElementById("backToCustomerChooserFromSignup");
   backToCustomerChooserFromLogin = document.getElementById("backToCustomerChooserFromLogin");
 }
 initializeCustomerAuthDom();
+
+function initializePasswordVisibilityToggles(root = document) {
+  root.querySelectorAll(".password-visibility-button[data-password-toggle]").forEach((button) => {
+    if (button.dataset.passwordToggleBound === "true") {
+      return;
+    }
+
+    button.dataset.passwordToggleBound = "true";
+
+    button.addEventListener("click", () => {
+      const targetId = button.dataset.passwordToggle;
+      const targetInput = targetId ? document.getElementById(targetId) : null;
+      if (!targetInput) {
+        return;
+      }
+
+      const shouldReveal = targetInput.type === "password";
+      targetInput.type = shouldReveal ? "text" : "password";
+
+      const nextLabel = shouldReveal
+        ? "\u05d4\u05e1\u05ea\u05e8\u05ea \u05e1\u05d9\u05e1\u05de\u05d4"
+        : "\u05d4\u05e6\u05d2\u05ea \u05e1\u05d9\u05e1\u05de\u05d4";
+
+      button.setAttribute("aria-label", nextLabel);
+      button.setAttribute("title", nextLabel);
+      button.setAttribute("aria-pressed", shouldReveal ? "true" : "false");
+    });
+  });
+}
+
+initializePasswordVisibilityToggles();
+
+function setCustomerEmailConfirmationButtonVisible(isVisible) {
+  customerEmailConfirmedButton?.classList.toggle("is-hidden", !isVisible);
+}
+
+function prepareCustomerLoginAfterSignup(email) {
+  if (customerLoginForm?.elements?.email) {
+    customerLoginForm.elements.email.value = String(email || "").trim().toLowerCase();
+  }
+  if (customerLoginForm?.elements?.password) {
+    customerLoginForm.elements.password.value = "";
+  }
+  setCustomerEmailConfirmationButtonVisible(true);
+  showCustomerLoginPanel();
+}
+
+function getCustomerSignupErrorMessage(error) {
+  const message = String(error?.message || "").toLowerCase();
+
+  if (message.includes("email confirmation")) {
+    return {
+      text: "החשבון נוצר בהצלחה. שלחנו לך מייל לאישור החשבון. פתחי את המייל ולחצי על הקישור, ואז תוכלי להתחבר.",
+      variant: "success",
+      needsEmailConfirmation: true
+    };
+  }
+
+  if (
+    message.includes("already registered")
+    || message.includes("already exists")
+    || message.includes("user already")
+    || message.includes("email exists")
+    || message.includes("email address is already")
+  ) {
+    return {
+      text: "כבר קיים חשבון עם האימייל הזה. נסי להתחבר דרך 'כניסה ללקוחה קיימת'.",
+      variant: "error",
+      needsEmailConfirmation: false
+    };
+  }
+
+  if (
+    message.includes("password")
+    && (message.includes("weak") || message.includes("least") || message.includes("short") || message.includes("6"))
+  ) {
+    return {
+      text: "הסיסמה קצרה מדי. בחרי סיסמה חזקה יותר.",
+      variant: "error",
+      needsEmailConfirmation: false
+    };
+  }
+
+  return {
+    text: "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע.",
+    variant: "error",
+    needsEmailConfirmation: false
+  };
+}
+
+async function handleCustomerSignupSubmit(event) {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+
+  const formData = new FormData(customerSignupForm);
+  const firstName = String(formData.get("firstName") || "").trim();
+  const lastName = String(formData.get("lastName") || "").trim();
+  const phone = String(formData.get("phone") || "").trim();
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const password = String(formData.get("password") || "");
+  const confirmPassword = String(formData.get("confirmPassword") || "");
+  const normalizedPhone = normalizePhoneNumber(phone);
+
+  if (!firstName || !lastName || !normalizedPhone || !email || !password || !confirmPassword) {
+    appUi.toast("צריך למלא את כל הפרטים כדי ליצור חשבון.", { variant: "error" });
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    appUi.toast("הסיסמאות לא תואמות.", { variant: "error" });
+    return;
+  }
+
+  if (!supabaseEnabled) {
+    const existing = state.users.find((user) => user.email === email || isSamePhone(user.phone, normalizedPhone));
+    if (existing && existing.email !== email) {
+      appUi.toast("כבר קיים חשבון עם הטלפון הזה.", { variant: "error" });
+      return;
+    }
+
+    const passwordHash = await hashPassword(password);
+    const localUser = existing || {
+      id: `local-customer-${Date.now()}`,
+      owner_note: "",
+      is_blocked: false,
+      blocked_reason: "",
+      blocked_at: "",
+      no_show_count: 0,
+      created_at: new Date().toISOString()
+    };
+
+    Object.assign(localUser, { firstName, lastName, phone: normalizedPhone, email, password: passwordHash });
+    if (!existing) state.users.push(localUser);
+    saveState();
+    finalizeLocalCustomerLogin(localUser);
+    appUi.toast("החשבון נוצר בהצלחה. את מחוברת עכשיו ויכולה לקבוע תור.", { variant: "success" });
+    return;
+  }
+
+  try {
+    await supabaseApi.registerCustomer({ firstName, lastName, phone, email, password });
+    setCustomerEmailConfirmationButtonVisible(false);
+    await finalizeCustomerLogin({
+      fullName: [firstName, lastName].filter(Boolean).join(" ").trim(),
+      phone
+    });
+    appUi.toast("החשבון נוצר בהצלחה. את מחוברת עכשיו ויכולה לקבוע תור.", { variant: "success" });
+    if (isCustomerBlocked(normalizedPhone)) {
+      appUi.toast("התחברת, אבל החשבון חסום כרגע לקביעת תורים חדשים.", { variant: "warning" });
+    }
+  } catch (error) {
+    const feedback = getCustomerSignupErrorMessage(error);
+    if (feedback.needsEmailConfirmation) {
+      prepareCustomerLoginAfterSignup(email);
+    }
+    appUi.toast(feedback.text, { variant: feedback.variant });
+  }
+}
 
 function loadState() {
   const defaults = structuredClone(DEFAULT_DATA);
@@ -773,6 +965,107 @@ function rememberCustomerSession(phone) {
 
 function clearRememberedCustomerSession() {
   localStorage.removeItem(CUSTOMER_SESSION_KEY);
+}
+
+function buildPendingBookingDraft() {
+  const fullName = String(bookingForm?.elements?.fullName?.value || uiState.bookingDraft.fullName || "").trim();
+  const phone = String(bookingForm?.elements?.phone?.value || uiState.bookingDraft.phone || "").trim();
+  const notes = String(bookingForm?.elements?.notes?.value || uiState.bookingDraft.notes || "").trim();
+  const serviceIds = getSelectedServiceIds();
+  const draft = {
+    wizardStep: Number(uiState.wizardStep || 1),
+    scheduleMode: String(uiState.scheduleMode || "firstAvailable"),
+    selectedServiceIds: serviceIds,
+    selectedStaffId: String(uiState.selectedStaffId || DEFAULT_OWNER_STAFF.id),
+    selectedDate: String(uiState.selectedDate || ""),
+    selectedTime: String(uiState.selectedTime || ""),
+    selectedMonthKey: String(uiState.selectedMonthKey || monthKey(new Date())),
+    replacementBookingId: uiState.replacementBookingId ? String(uiState.replacementBookingId) : "",
+    bookingDraft: {
+      fullName,
+      phone,
+      notes
+    }
+  };
+
+  const hasMeaningfulState = Boolean(
+    serviceIds.length
+    || draft.selectedDate
+    || draft.selectedTime
+    || fullName
+    || phone
+    || notes
+    || draft.wizardStep > 1
+  );
+
+  return hasMeaningfulState ? draft : null;
+}
+
+function savePendingBookingDraft() {
+  const draft = buildPendingBookingDraft();
+  if (!draft) {
+    sessionStorage.removeItem(PENDING_BOOKING_DRAFT_KEY);
+    return;
+  }
+
+  sessionStorage.setItem(PENDING_BOOKING_DRAFT_KEY, JSON.stringify(draft));
+}
+
+function loadPendingBookingDraft() {
+  try {
+    const raw = sessionStorage.getItem(PENDING_BOOKING_DRAFT_KEY);
+    if (!raw) {
+      return null;
+    }
+    return JSON.parse(raw);
+  } catch (error) {
+    sessionStorage.removeItem(PENDING_BOOKING_DRAFT_KEY);
+    return null;
+  }
+}
+
+function clearPendingBookingDraft() {
+  sessionStorage.removeItem(PENDING_BOOKING_DRAFT_KEY);
+}
+
+function restorePendingBookingDraft() {
+  const draft = loadPendingBookingDraft();
+  if (!draft) {
+    return false;
+  }
+
+  const nextServiceIds = (Array.isArray(draft.selectedServiceIds) ? draft.selectedServiceIds : [])
+    .map((serviceId) => String(serviceId || "").trim())
+    .filter((serviceId) => serviceId && state.services.some((service) => service.id === serviceId));
+
+  syncSelectedServiceState(nextServiceIds);
+
+  const requestedStaffId = String(draft.selectedStaffId || DEFAULT_OWNER_STAFF.id);
+  uiState.selectedStaffId = state.staff.some((staff) => staff.id === requestedStaffId)
+    ? requestedStaffId
+    : DEFAULT_OWNER_STAFF.id;
+  uiState.selectedDate = String(draft.selectedDate || "");
+  uiState.selectedTime = String(draft.selectedTime || "");
+  uiState.selectedMonthKey = String(
+    draft.selectedMonthKey
+    || (uiState.selectedDate ? monthKey(new Date(`${uiState.selectedDate}T00:00:00`)) : monthKey(new Date()))
+  );
+  uiState.scheduleMode = draft.scheduleMode === "calendar" ? "calendar" : "firstAvailable";
+  uiState.replacementBookingId = draft.replacementBookingId || null;
+  uiState.bookingDraft = {
+    fullName: String(draft.bookingDraft?.fullName || ""),
+    phone: String(draft.bookingDraft?.phone || ""),
+    notes: String(draft.bookingDraft?.notes || "")
+  };
+
+  const requestedStep = Number(draft.wizardStep || 1);
+  const normalizedStep = Number.isFinite(requestedStep) ? Math.min(Math.max(requestedStep, 1), 4) : 1;
+
+  hideBookingSuccess();
+  rerenderAll();
+  showWizardStep(normalizedStep);
+  renderBookingSummary();
+  return true;
 }
 
 
@@ -2273,6 +2566,7 @@ function ensureScheduleSelected() {
 
 function openAuthModal(role) {
   if (role === "customer") {
+    savePendingBookingDraft();
     const draftName = parseFullName(uiState.bookingDraft.fullName);
     if (customerSignupForm && !customerSignupForm.elements.firstName.value) {
       customerSignupForm.elements.firstName.value = draftName.firstName;
@@ -2313,6 +2607,7 @@ function showAuthTab(tabName) {
 }
 
 function showCustomerChooserPanel() {
+  setCustomerEmailConfirmationButtonVisible(false);
   customerChooserPanel?.classList.add("is-active");
   customerSignupForm?.classList.remove("is-active");
   customerLoginForm?.classList.remove("is-active");
@@ -2320,6 +2615,7 @@ function showCustomerChooserPanel() {
 }
 
 function showCustomerSignupPanel() {
+  setCustomerEmailConfirmationButtonVisible(false);
   customerChooserPanel?.classList.remove("is-active");
   customerSignupForm?.classList.add("is-active");
   customerLoginForm?.classList.remove("is-active");
@@ -2334,6 +2630,7 @@ function showCustomerLoginPanel() {
 }
 
 function showCustomerRecoveryPanel() {
+  setCustomerEmailConfirmationButtonVisible(false);
   authModal.classList.remove("is-hidden");
   showAuthTab("customer");
   customerChooserPanel?.classList.remove("is-active");
@@ -2355,6 +2652,7 @@ async function finalizeCustomerLogin({ fullName = "", phone = "" } = {}) {
   }
   closeAuthModal();
   await refreshStateFromSupabase();
+  restorePendingBookingDraft();
   setupPersonalRealtimeSubscriptions();
   if (session.customerPhone) {
     rememberCustomerSession(session.customerPhone);
@@ -2371,6 +2669,7 @@ function finalizeLocalCustomerLogin(user) {
   uiState.bookingDraft.phone = user.phone;
   rememberCustomerSession(user.phone);
   closeAuthModal();
+  restorePendingBookingDraft();
   notificationCenter?.rememberCurrentNotifications();
   rerenderAll();
 }
@@ -2421,7 +2720,14 @@ function resetBookingSelection() {
   uiState.selectedDate = "";
   uiState.selectedTime = "";
   uiState.selectedMonthKey = monthKey(new Date());
+  uiState.scheduleMode = "firstAvailable";
+  uiState.bookingDraft = {
+    fullName: "",
+    phone: "",
+    notes: ""
+  };
   clearReplacementBooking();
+  clearPendingBookingDraft();
   showWizardStep(1);
 }
 
@@ -2439,6 +2745,7 @@ logoutButton.addEventListener("click", async () => {
   clearReplacementBooking();
   closeCalendarChoice();
   clearRememberedCustomerSession();
+  clearPendingBookingDraft();
   if (supabaseEnabled) {
     await supabaseApi.signOut();
   }
@@ -2506,6 +2813,12 @@ backToCustomerChooserFromSignup?.addEventListener("click", () => {
 
 backToCustomerChooserFromLogin?.addEventListener("click", () => {
   showCustomerChooserPanel();
+});
+
+customerEmailConfirmedButton?.addEventListener("click", () => {
+  setCustomerEmailConfirmationButtonVisible(false);
+  showCustomerLoginPanel();
+  customerLoginForm?.elements?.password?.focus?.();
 });
 
 customerBookingsFilters.addEventListener("click", (event) => {
@@ -2723,6 +3036,8 @@ customerSignupForm?.addEventListener("submit", async (event) => {
       fullName: [firstName, lastName].filter(Boolean).join(" ").trim(),
       phone
     });
+    setCustomerEmailConfirmationButtonVisible(false);
+    appUi.toast("החשבון נוצר בהצלחה. את מחוברת עכשיו ויכולה לקבוע תור.", { variant: "success" });
     if (isCustomerBlocked(normalizedPhone)) {
       appUi.toast("התחברת, אבל החשבון חסום כרגע לקביעת תורים חדשים.", { variant: "warning" });
     }
@@ -2730,6 +3045,8 @@ customerSignupForm?.addEventListener("submit", async (event) => {
     appUi.toast(error?.message || "לא הצלחנו ליצור חשבון לקוחה.", { variant: "error" });
   }
 });
+
+customerSignupForm?.addEventListener("submit", handleCustomerSignupSubmit, true);
 
 customerLoginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -2925,6 +3242,7 @@ bookingForm.addEventListener("submit", async (event) => {
       notes: ""
     };
     clearReplacementBooking();
+    clearPendingBookingDraft();
     saveState();
     await refreshStateFromSupabase();
     showWizardStep(4);
