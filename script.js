@@ -1,4 +1,4 @@
-﻿const LOCAL_STORAGE_KEY = "booking_app_local_working_v2";
+const LOCAL_STORAGE_KEY = "booking_app_local_working_v2";
 const SELLER_SESSION_KEY = "booking_app_seller_session_v1";
 const CUSTOMER_SESSION_KEY = "booking_app_customer_session_v1";
 const REJECT_UNDO_WINDOW_MS = 5000;
@@ -218,7 +218,7 @@ const notificationCenter = window.AppNotifications?.create({
   onAddCalendar: (notification) => openCustomerBookingCalendar(notification.booking_id),
   canConfirmAttendance: (notification) => getOwnedCustomerBooking(notification.booking_id)?.status === "approved",
   canCancelBooking: (notification) => ["pending", "approved"].includes(getOwnedCustomerBooking(notification.booking_id)?.status),
-  onError: (error) => appUi.toast(error?.message || "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳¢׳“׳›׳ ׳׳× ׳”׳”׳×׳¨׳׳”.", { variant: "error" }),
+  onError: (error) => appUi.toast(error?.message || "לא הצלחנו לעדכן את ההתראה.", { variant: "error" }),
   browser: true
 });
 
@@ -686,7 +686,7 @@ async function refreshStateFromSupabase() {
     await syncSessionFromSupabase();
     const publicState = await supabaseApi.loadPublicState();
     if (!publicState?.business?.id) {
-      throw new Error("׳׳ ׳ ׳׳¦׳ ׳¢׳¡׳§ ׳₪׳¢׳™׳ ׳‘-Supabase.");
+      throw new Error("לא נמצא עסק פעיל ב-Supabase.");
     }
 
     mergePublicState(publicState);
@@ -873,8 +873,8 @@ function getOwnerNotificationTargetId() {
 function notifyOwnerAppointmentBooked(booking) {
   pushAppNotification(
     getOwnerNotificationTargetId(),
-    "׳ ׳§׳‘׳¢ ׳×׳•׳¨ ׳—׳“׳©",
-    `${getBookingCustomerName(booking)} ׳§׳‘׳¢׳” ׳×׳•׳¨ ׳${booking.service_name} ׳‘׳×׳׳¨׳™׳ ${getBookingDateTimeText(booking)}.`,
+    "נקבע תור חדש",
+    `${getBookingCustomerName(booking)} קבעה תור ל${booking.service_name} בתאריך ${getBookingDateTimeText(booking)}.`,
     "appointment_booked"
   );
 }
@@ -902,17 +902,17 @@ function notifyOwnerAppointmentBooked(booking) {
 function getSocialNetworkLabel(value) {
   try {
     const hostname = new URL(value).hostname.toLowerCase().replace(/^www\./, "");
-    if (hostname.includes("instagram.com")) return "׳׳™׳ ׳¡׳˜׳’׳¨׳";
-    if (hostname.includes("facebook.com") || hostname === "fb.com") return "׳₪׳™׳™׳¡׳‘׳•׳§";
-    if (hostname.includes("tiktok.com")) return "׳˜׳™׳§׳˜׳•׳§";
-    if (hostname.includes("youtube.com") || hostname === "youtu.be") return "׳™׳•׳˜׳™׳•׳‘";
+    if (hostname.includes("instagram.com")) return "אינסטגרם";
+    if (hostname.includes("facebook.com") || hostname === "fb.com") return "פייסבוק";
+    if (hostname.includes("tiktok.com")) return "טיקטוק";
+    if (hostname.includes("youtube.com") || hostname === "youtu.be") return "יוטיוב";
     if (hostname === "x.com" || hostname.includes("twitter.com")) return "X";
     if (hostname.includes("linkedin.com")) return "LinkedIn";
   } catch (error) {
-    return "׳¨׳©׳× ׳—׳‘׳¨׳×׳™׳×";
+    return "רשת חברתית";
   }
 
-  return "׳¨׳©׳× ׳—׳‘׳¨׳×׳™׳×";
+  return "רשת חברתית";
 }
 
 function isBusinessFeatureEnabled(featureName) {
@@ -1166,7 +1166,7 @@ function getCustomerBookingPresentation(booking) {
     return {
       bucket,
       statusClass: "completed",
-      statusLabel: "׳”׳•׳©׳׳"
+      statusLabel: "הושלם"
     };
   }
 
@@ -1174,7 +1174,7 @@ function getCustomerBookingPresentation(booking) {
     return {
       bucket,
       statusClass: "cancelled",
-      statusLabel: "׳׳ ׳”׳’׳™׳¢׳”"
+      statusLabel: "לא הגיעה"
     };
   }
 
@@ -1187,14 +1187,14 @@ function getCustomerBookingPresentation(booking) {
 
 function getCustomerEmptyMessage(viewName) {
   if (viewName === "completed") {
-    return "׳¢׳“׳™׳™׳ ׳׳™׳ ׳×׳•׳¨׳™׳ ׳©׳”׳•׳©׳׳׳•.";
+    return "עדיין אין תורים שהושלמו.";
   }
 
   if (viewName === "cancelled") {
-    return "׳¢׳“׳™׳™׳ ׳׳™׳ ׳×׳•׳¨׳™׳ ׳©׳‘׳•׳˜׳׳• ׳׳• ׳ ׳“׳—׳•.";
+    return "עדיין אין תורים שבוטלו או נדחו.";
   }
 
-  return "׳›׳¨׳’׳¢ ׳׳™׳ ׳×׳•׳¨׳™׳ ׳₪׳¢׳™׳׳™׳.";
+  return "כרגע אין תורים פעילים.";
 }
 
 function updateCustomerBookingsFilterUi(groupedBookings) {
@@ -1234,8 +1234,8 @@ function parseFullName(fullName) {
 
 function hideBookingSuccess() {
   bookingSuccessPanel.classList.add("is-hidden");
-  bookingSuccessTitle.textContent = "׳”׳”׳–׳׳ ׳” ׳ ׳©׳׳—׳” ׳‘׳”׳¦׳׳—׳”";
-  bookingSuccessText.textContent = "׳”׳‘׳§׳©׳” ׳ ׳©׳׳¨׳” ׳•׳׳—׳›׳” ׳׳׳™׳©׳•׳¨ ׳©׳ ׳‘׳¢׳׳× ׳”׳¢׳¡׳§.";
+  bookingSuccessTitle.textContent = "ההזמנה נשלחה בהצלחה";
+  bookingSuccessText.textContent = "הבקשה נשמרה ומחכה לאישור של בעלת העסק.";
   bookingPreparationMessage.textContent = "";
   bookingPreparationMessage.classList.add("is-hidden");
   bookingSuccessSummary.innerHTML = "";
@@ -1246,16 +1246,16 @@ function hideBookingSuccess() {
 function showBookingSuccess(booking) {
   const isChangeRequest = Boolean(booking.replaces_booking_id);
   bookingSuccessSummary.innerHTML = `
-    <div class="summary-row"><span>${booking.service_ids?.length > 1 ? "׳©׳™׳¨׳•׳×׳™׳" : "׳©׳™׳¨׳•׳×"}</span><strong>${booking.service_name}</strong></div>
-    <div class="summary-row"><span>׳׳©׳× ׳¦׳•׳•׳×</span><strong>${booking.staff_name}</strong></div>
-    <div class="summary-row"><span>׳×׳׳¨׳™׳</span><strong>${formatDisplayDate(booking.booking_date)}</strong></div>
-    <div class="summary-row"><span>׳©׳¢׳”</span><strong>${booking.booking_time}</strong></div>
-    <div class="summary-row"><span>׳׳©׳ ׳›׳•׳׳</span><strong>${booking.duration_minutes} ׳“׳§׳•׳×</strong></div>
+    <div class="summary-row"><span>${booking.service_ids?.length > 1 ? "שירותים" : "שירות"}</span><strong>${booking.service_name}</strong></div>
+    <div class="summary-row"><span>אשת צוות</span><strong>${booking.staff_name}</strong></div>
+    <div class="summary-row"><span>תאריך</span><strong>${formatDisplayDate(booking.booking_date)}</strong></div>
+    <div class="summary-row"><span>שעה</span><strong>${booking.booking_time}</strong></div>
+    <div class="summary-row"><span>משך כולל</span><strong>${booking.duration_minutes} דקות</strong></div>
   `;
-  bookingSuccessTitle.textContent = isChangeRequest ? "׳‘׳§׳©׳× ׳©׳™׳ ׳•׳™ ׳”׳×׳•׳¨ ׳ ׳©׳׳—׳”" : "׳”׳”׳–׳׳ ׳” ׳ ׳©׳׳—׳” ׳‘׳”׳¦׳׳—׳”";
+  bookingSuccessTitle.textContent = isChangeRequest ? "בקשת שינוי התור נשלחה" : "ההזמנה נשלחה בהצלחה";
   bookingSuccessText.textContent = isChangeRequest
-    ? "׳‘׳§׳©׳× ׳”׳©׳™׳ ׳•׳™ ׳ ׳©׳׳¨׳”. ׳”׳×׳•׳¨ ׳”׳™׳©׳ ׳ ׳©׳׳¨ ׳©׳׳•׳¨ ׳¢׳“ ׳©׳‘׳¢׳׳× ׳”׳¢׳¡׳§ ׳×׳׳©׳¨ ׳׳× ׳”׳×׳•׳¨ ׳”׳—׳“׳©."
-    : "׳”׳‘׳§׳©׳” ׳ ׳©׳׳¨׳” ׳•׳׳—׳›׳” ׳׳׳™׳©׳•׳¨ ׳©׳ ׳‘׳¢׳׳× ׳”׳¢׳¡׳§.";
+    ? "בקשת השינוי נשמרה. התור הישן נשאר שמור עד שבעלת העסק תאשר את התור החדש."
+    : "הבקשה נשמרה ומחכה לאישור של בעלת העסק.";
   if (isBusinessFeatureEnabled("preparationMessage") && state.business.preparation_message) {
     bookingPreparationMessage.textContent = state.business.preparation_message;
     bookingPreparationMessage.classList.remove("is-hidden");
@@ -1273,11 +1273,11 @@ function renderChangeModeBanner() {
 
   if (!sourceBooking || !["pending", "approved"].includes(sourceBooking.status)) {
     changeModeBanner.classList.add("is-hidden");
-    changeModeText.textContent = "׳›׳׳ ׳׳©׳ ׳™׳ ׳×׳•׳¨ ׳§׳™׳™׳ ׳‘׳׳™ ׳׳׳‘׳“ ׳׳× ׳”׳×׳•׳¨ ׳”׳™׳©׳ ׳¢׳“ ׳׳׳™׳©׳•׳¨.";
+    changeModeText.textContent = "כאן משנים תור קיים בלי לאבד את התור הישן עד לאישור.";
     return;
   }
 
-  changeModeText.textContent = `׳׳©׳ ׳™׳ ׳¢׳›׳©׳™׳• ׳׳× ׳”׳×׳•׳¨ ׳”׳§׳™׳™׳ ׳©׳ ${formatDisplayDate(sourceBooking.booking_date)} ׳‘׳©׳¢׳” ${sourceBooking.booking_time}. ׳”׳×׳•׳¨ ׳”׳™׳©׳ ׳ ׳©׳׳¨ ׳©׳׳•׳¨ ׳¢׳“ ׳׳׳™׳©׳•׳¨ ׳”׳×׳•׳¨ ׳”׳—׳“׳©.`;
+  changeModeText.textContent = `משנים עכשיו את התור הקיים של ${formatDisplayDate(sourceBooking.booking_date)} בשעה ${sourceBooking.booking_time}. התור הישן נשאר שמור עד לאישור התור החדש.`;
   changeModeBanner.classList.remove("is-hidden");
 }
 
@@ -1311,8 +1311,8 @@ function updateContactLinks() {
     socialLink.removeAttribute("href");
     socialLink.removeAttribute("target");
     socialLink.removeAttribute("rel");
-    socialLink.setAttribute("aria-label", "׳¨׳©׳× ׳—׳‘׳¨׳×׳™׳×");
-    socialLink.title = "׳¨׳©׳× ׳—׳‘׳¨׳×׳™׳×";
+    socialLink.setAttribute("aria-label", "רשת חברתית");
+    socialLink.title = "רשת חברתית";
   }
   contactRow.classList.toggle("is-hidden", !showWhatsapp && !showPhone && !showWaze && !showSocial);
 }
@@ -1546,12 +1546,12 @@ function joinWaitlistForCurrentSelection() {
   }
 
   if (isCustomerBlocked()) {
-    appUi.toast("׳”׳—׳©׳‘׳•׳ ׳©׳׳ ׳—׳¡׳•׳ ׳›׳¨׳’׳¢ ׳׳§׳‘׳™׳¢׳× ׳×׳•׳¨׳™׳ ׳—׳“׳©׳™׳.", { variant: "error" });
+    appUi.toast("החשבון שלך חסום כרגע לקביעת תורים חדשים.", { variant: "error" });
     return;
   }
 
   if (getSelectedWaitlistEntry()) {
-    appUi.toast("׳›׳‘׳¨ ׳ ׳¨׳©׳׳× ׳׳¨׳©׳™׳׳× ׳”׳”׳׳×׳ ׳” ׳©׳ ׳”׳™׳•׳ ׳”׳–׳”.", { variant: "info" });
+    appUi.toast("כבר נרשמת לרשימת ההמתנה של היום הזה.", { variant: "info" });
     return;
   }
 
@@ -1559,7 +1559,7 @@ function joinWaitlistForCurrentSelection() {
     state.waitlistEntries.push({
       id: `waitlist-${Date.now()}`,
       customer_phone: currentCustomer?.phone || session.customerPhone || "",
-      customer_name: buildCustomerFullName(currentCustomer?.firstName, currentCustomer?.lastName) || "׳׳§׳•׳—׳”",
+      customer_name: buildCustomerFullName(currentCustomer?.firstName, currentCustomer?.lastName) || "לקוחה",
       customer_auth_user_id: session.authUserId || "",
       service_id: serviceBundle.primaryServiceId,
       service_name: serviceBundle.primaryServiceName,
@@ -1576,7 +1576,7 @@ function joinWaitlistForCurrentSelection() {
 
   if (!supabaseEnabled) {
     createEntryLocally();
-    appUi.toast("׳ ׳¨׳©׳׳× ׳׳¨׳©׳™׳׳× ׳”׳”׳׳×׳ ׳”. ׳׳ ׳™׳×׳₪׳ ׳” ׳׳§׳•׳ ׳×׳§׳‘׳׳™ ׳”׳×׳¨׳׳”.", { variant: "success" });
+    appUi.toast("נרשמת לרשימת ההמתנה. אם יתפנה מקום תקבלי התראה.", { variant: "success" });
     return;
   }
 
@@ -1587,9 +1587,9 @@ function joinWaitlistForCurrentSelection() {
     notes: uiState.bookingDraft.notes || ""
   }).then(async () => {
     await refreshStateFromSupabase();
-    appUi.toast("׳ ׳¨׳©׳׳× ׳׳¨׳©׳™׳׳× ׳”׳”׳׳×׳ ׳”. ׳׳ ׳™׳×׳₪׳ ׳” ׳׳§׳•׳ ׳×׳§׳‘׳׳™ ׳”׳×׳¨׳׳”.", { variant: "success" });
+    appUi.toast("נרשמת לרשימת ההמתנה. אם יתפנה מקום תקבלי התראה.", { variant: "success" });
   }).catch((error) => {
-    appUi.toast(error?.message || "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳”׳¦׳˜׳¨׳£ ׳׳¨׳©׳™׳׳× ׳”׳”׳׳×׳ ׳”.", { variant: "error" });
+    appUi.toast(error?.message || "לא הצלחנו להצטרף לרשימת ההמתנה.", { variant: "error" });
   });
 }
 
@@ -1613,19 +1613,19 @@ function renderTodayAvailability() {
   const serviceBundle = getSelectedServiceBundle();
 
   if (!serviceBundle) {
-    todayAvailabilityText.textContent = "׳‘׳—׳¨׳™ ׳©׳™׳¨׳•׳× ׳›׳“׳™ ׳׳¨׳׳•׳× ׳©׳¢׳•׳× ׳₪׳ ׳•׳™׳•׳× ׳׳”׳™׳•׳.";
+    todayAvailabilityText.textContent = "בחרי שירות כדי לראות שעות פנויות להיום.";
     todaySlotsList.innerHTML = "";
     return;
   }
 
   const slots = getAvailableSlots(todayDate(), serviceBundle.ids, uiState.selectedStaffId).slice(0, 6);
   if (!slots.length) {
-    todayAvailabilityText.textContent = `׳׳™׳ ׳©׳¢׳•׳× ׳₪׳ ׳•׳™׳•׳× ׳”׳™׳•׳ ׳¢׳‘׳•׳¨ ${serviceBundle.name}.`;
+    todayAvailabilityText.textContent = `אין שעות פנויות היום עבור ${serviceBundle.name}.`;
     todaySlotsList.innerHTML = "";
     return;
   }
 
-  todayAvailabilityText.textContent = `׳”׳©׳¢׳•׳× ׳”׳§׳¨׳•׳‘׳•׳× ׳”׳₪׳ ׳•׳™׳•׳× ׳”׳™׳•׳ ׳¢׳‘׳•׳¨ ${serviceBundle.name}:`;
+  todayAvailabilityText.textContent = `השעות הקרובות הפנויות היום עבור ${serviceBundle.name}:`;
   todaySlotsList.innerHTML = slots
     .map((time) => `<button class="today-slot-chip" type="button" data-today-time="${time}">${time}</button>`)
     .join("");
@@ -1721,13 +1721,13 @@ function renderFirstAvailableList() {
   }
 
   if (!serviceBundle) {
-    firstAvailableList.innerHTML = '<div class="empty-state"><div class="empty-icon" aria-hidden="true">ג›</div><p>׳‘׳—׳¨׳™ ׳©׳™׳¨׳•׳× ׳›׳“׳™ ׳׳¨׳׳•׳× ׳׳× ׳”׳–׳׳ ׳™׳ ׳”׳¨׳׳©׳•׳ ׳™׳ ׳©׳₪׳ ׳•׳™׳™׳.</p></div>';
+    firstAvailableList.innerHTML = '<div class="empty-state"><div class="empty-icon" aria-hidden="true">⌛</div><p>בחרי שירות כדי לראות את הזמנים הראשונים שפנויים.</p></div>';
     return;
   }
 
   const availableDays = buildFirstAvailableDays();
   if (!availableDays.length) {
-    firstAvailableList.innerHTML = '<div class="empty-state"><div class="empty-icon" aria-hidden="true">ג›</div><p>׳׳ ׳׳¦׳׳ ׳• ׳›׳¨׳’׳¢ ׳–׳׳ ׳™׳ ׳§׳¨׳•׳‘׳™׳. ׳׳₪׳©׳¨ ׳׳¢׳‘׳•׳¨ ׳׳׳©׳•׳ ׳™׳× "׳׳₪׳™ ׳™׳•׳".</p></div>';
+    firstAvailableList.innerHTML = '<div class="empty-state"><div class="empty-icon" aria-hidden="true">⌛</div><p>לא מצאנו כרגע זמנים קרובים. אפשר לעבור ללשונית "לפי יום".</p></div>';
     return;
   }
 
@@ -1736,7 +1736,7 @@ function renderFirstAvailableList() {
       <section class="first-available-day ${uiState.selectedDate === day.date ? "is-selected" : ""}">
         <div class="first-available-head">
           <strong>${formatDisplayDate(day.date)}</strong>
-          <span>${day.slots.length} ׳©׳¢׳•׳× ׳§׳¨׳•׳‘׳•׳×</span>
+          <span>${day.slots.length} שעות קרובות</span>
         </div>
         <div class="first-available-slots">
           ${day.slots.map((time) => `
@@ -1814,7 +1814,7 @@ function renderTimeOptions() {
   waitlistPrompt?.classList.toggle("is-hidden", !canOfferWaitlist);
   if (joinWaitlistButton) {
     joinWaitlistButton.disabled = !canOfferWaitlist || Boolean(getSelectedWaitlistEntry()) || isCustomerBlocked();
-    joinWaitlistButton.textContent = getSelectedWaitlistEntry() ? "׳›׳‘׳¨ ׳”׳¦׳˜׳¨׳₪׳× ׳׳¨׳©׳™׳׳”" : "׳”׳¦׳˜׳¨׳₪׳•׳× ׳׳¨׳©׳™׳׳× ׳”׳׳×׳ ׳”";
+    joinWaitlistButton.textContent = getSelectedWaitlistEntry() ? "כבר הצטרפת לרשימה" : "הצטרפות לרשימת המתנה";
   }
 }
 
@@ -1849,19 +1849,19 @@ function renderDetailsForm() {
   const blockedCustomer = isCustomerBlocked();
   if (isLoggedIn) {
     detailsNotice.textContent = blockedCustomer
-      ? "׳”׳—׳©׳‘׳•׳ ׳©׳׳ ׳—׳¡׳•׳ ׳›׳¨׳’׳¢ ׳׳§׳‘׳™׳¢׳× ׳×׳•׳¨׳™׳ ׳—׳“׳©׳™׳. ׳׳₪׳©׳¨ ׳׳₪׳ ׳•׳× ׳׳‘׳¢׳׳× ׳”׳¢׳¡׳§ ׳›׳“׳™ ׳׳”׳¡׳“׳™׳¨ ׳׳× ׳–׳”."
+      ? "החשבון שלך חסום כרגע לקביעת תורים חדשים. אפשר לפנות לבעלת העסק כדי להסדיר את זה."
       : uiState.replacementBookingId
-        ? "׳׳× ׳׳©׳ ׳” ׳¢׳›׳©׳™׳• ׳×׳•׳¨ ׳§׳™׳™׳. ׳‘׳§׳©׳× ׳”׳©׳™׳ ׳•׳™ ׳×׳™׳©׳׳— ׳׳׳™׳©׳•׳¨, ׳•׳”׳×׳•׳¨ ׳”׳™׳©׳ ׳™׳™׳©׳׳¨ ׳©׳׳•׳¨ ׳¢׳“ ׳©׳‘׳¢׳׳× ׳”׳¢׳¡׳§ ׳×׳׳©׳¨ ׳׳× ׳”׳×׳•׳¨ ׳”׳—׳“׳©."
-        : "׳”׳₪׳¨׳˜׳™׳ ׳ ׳׳©׳›׳• ׳׳”׳—׳©׳‘׳•׳ ׳©׳׳. ׳׳₪׳©׳¨ ׳׳¢׳“׳›׳ ׳׳•׳×׳ ׳׳₪׳ ׳™ ׳׳™׳©׳•׳¨.";
+        ? "את משנה עכשיו תור קיים. בקשת השינוי תישלח לאישור, והתור הישן יישאר שמור עד שבעלת העסק תאשר את התור החדש."
+        : "הפרטים נמשכו מהחשבון שלך. אפשר לעדכן אותם לפני אישור.";
   } else {
-    detailsNotice.textContent = "׳›׳“׳™ ׳׳׳©׳¨ ׳×׳•׳¨ ׳¦׳¨׳™׳ ׳׳”׳×׳—׳‘׳¨ ׳›׳׳§׳•׳—׳”. ׳‘׳׳™ ׳”׳×׳—׳‘׳¨׳•׳× ׳׳™ ׳׳₪׳©׳¨ ׳׳©׳׳•׳¨ ׳”׳–׳׳ ׳”.";
+    detailsNotice.textContent = "כדי לאשר תור צריך להתחבר כלקוחה. בלי התחברות אי אפשר לשמור הזמנה.";
   }
 
   bookingSubmitButton.textContent = uiState.isBookingSubmitting
-    ? "׳©׳•׳׳¨..."
+    ? "שומר..."
     : sourceBooking
-      ? "׳©׳׳™׳—׳× ׳©׳™׳ ׳•׳™ ׳×׳•׳¨"
-      : "׳§׳‘׳¢ ׳×׳•׳¨";
+      ? "שליחת שינוי תור"
+      : "קבע תור";
 
   Array.from(bookingForm.elements).forEach((element) => {
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLButtonElement) {
@@ -1880,7 +1880,7 @@ function renderCustomerBookings() {
       completed: [],
       cancelled: []
     });
-    myBookingsList.innerHTML = '<div class="notice-box">׳”׳×׳—׳‘׳¨׳™ ׳›׳׳§׳•׳—׳” ׳›׳“׳™ ׳׳¨׳׳•׳× ׳׳× ׳”׳×׳•׳¨׳™׳ ׳©׳׳.</div>';
+    myBookingsList.innerHTML = '<div class="notice-box">התחברי כלקוחה כדי לראות את התורים שלך.</div>';
     return;
   }
 
@@ -1893,7 +1893,7 @@ function renderCustomerBookings() {
       completed: [],
       cancelled: []
     });
-    myBookingsList.innerHTML = '<div class="notice-box">׳¢׳“׳™׳™׳ ׳׳™׳ ׳×׳•׳¨׳™׳ ׳¢׳ ׳”׳—׳©׳‘׳•׳ ׳”׳–׳”.</div>';
+    myBookingsList.innerHTML = '<div class="notice-box">עדיין אין תורים על החשבון הזה.</div>';
     return;
   }
 
@@ -1945,42 +1945,42 @@ function renderCustomerBookings() {
             <span>${booking.booking_time}</span>
             <span>${booking.staff_name}</span>
           </div>
-          ${booking.status === "approved" && booking.arrival_status ? `<div class="booking-note">׳׳¦׳‘ ׳”׳’׳¢׳”: ${formatArrivalStatus(booking.arrival_status)}</div>` : ""}
-          ${attendanceStatusText ? `<div class="booking-note">׳׳™׳©׳•׳¨ ׳”׳’׳¢׳”: ${attendanceStatusText}</div>` : ""}
-          ${booking.notes ? `<div class="booking-note">׳”׳¢׳¨׳”: ${booking.notes}</div>` : ""}
-          ${preparationMessage ? `<div class="booking-note">׳”׳›׳ ׳” ׳׳×׳•׳¨: ${preparationMessage}</div>` : ""}
+          ${booking.status === "approved" && booking.arrival_status ? `<div class="booking-note">מצב הגעה: ${formatArrivalStatus(booking.arrival_status)}</div>` : ""}
+          ${attendanceStatusText ? `<div class="booking-note">אישור הגעה: ${attendanceStatusText}</div>` : ""}
+          ${booking.notes ? `<div class="booking-note">הערה: ${booking.notes}</div>` : ""}
+          ${preparationMessage ? `<div class="booking-note">הכנה לתור: ${preparationMessage}</div>` : ""}
           ${
             pendingChangeRequest
-              ? `<div class="change-request-strip">׳™׳© ׳›׳¨׳’׳¢ ׳‘׳§׳©׳× ׳©׳™׳ ׳•׳™ ׳₪׳×׳•׳—׳” ׳׳×׳׳¨׳™׳ ${formatDisplayDate(pendingChangeRequest.booking_date)} ׳‘׳©׳¢׳” ${pendingChangeRequest.booking_time}. ׳”׳×׳•׳¨ ׳”׳™׳©׳ ׳ ׳©׳׳¨ ׳©׳׳•׳¨ ׳¢׳“ ׳׳׳™׳©׳•׳¨.</div>`
+              ? `<div class="change-request-strip">יש כרגע בקשת שינוי פתוחה לתאריך ${formatDisplayDate(pendingChangeRequest.booking_date)} בשעה ${pendingChangeRequest.booking_time}. התור הישן נשאר שמור עד לאישור.</div>`
               : ""
           }
           ${
             originalBooking
-              ? `<div class="change-request-strip">׳–׳• ׳‘׳§׳©׳× ׳©׳™׳ ׳•׳™ ׳¢׳‘׳•׳¨ ׳”׳×׳•׳¨ ׳”׳׳§׳•׳¨׳™ ׳©׳ ${formatDisplayDate(originalBooking.booking_date)} ׳‘׳©׳¢׳” ${originalBooking.booking_time}.</div>`
+              ? `<div class="change-request-strip">זו בקשת שינוי עבור התור המקורי של ${formatDisplayDate(originalBooking.booking_date)} בשעה ${originalBooking.booking_time}.</div>`
               : ""
           }
           ${
             presentation.bucket === "active"
               ? `
                 <div class="booking-card-actions">
-                  ${canExportCalendar ? `<button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">׳”׳•׳¡׳₪׳” ׳׳™׳•׳׳</button>` : ""}
-                  ${canChangeThisBooking ? `<button class="ghost-button replace-booking-button" type="button" data-booking-id="${booking.id}">׳©׳™׳ ׳•׳™ ׳×׳•׳¨</button>` : ""}
-                  ${canRespondAttendance ? `<button class="ghost-button confirm-arrival-button" type="button" data-booking-id="${booking.id}" data-attendance-response="confirmed">׳׳ ׳™ ׳׳’׳™׳¢׳”</button>` : ""}
-                  ${canRespondAttendance ? `<button class="ghost-button decline-arrival-button" type="button" data-booking-id="${booking.id}" data-attendance-response="declined">׳׳ ׳׳•׳›׳ ׳׳”׳’׳™׳¢</button>` : ""}
-                  <button class="danger-button cancel-booking-button" type="button" data-booking-id="${booking.id}">׳‘׳™׳˜׳•׳</button>
+                  ${canExportCalendar ? `<button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>` : ""}
+                  ${canChangeThisBooking ? `<button class="ghost-button replace-booking-button" type="button" data-booking-id="${booking.id}">שינוי תור</button>` : ""}
+                  ${canRespondAttendance ? `<button class="ghost-button confirm-arrival-button" type="button" data-booking-id="${booking.id}" data-attendance-response="confirmed">אני מגיעה</button>` : ""}
+                  ${canRespondAttendance ? `<button class="ghost-button decline-arrival-button" type="button" data-booking-id="${booking.id}" data-attendance-response="declined">לא אוכל להגיע</button>` : ""}
+                  <button class="danger-button cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול</button>
                 </div>
               `
               : presentation.bucket === "completed"
                 ? canExportCalendar
                   ? `
                     <div class="booking-card-actions">
-                      <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">׳”׳•׳¡׳₪׳” ׳׳™׳•׳׳</button>
+                      <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
                     </div>
                   `
                   : ""
                 : `
                   <div class="booking-card-actions">
-                    <button class="ghost-button hide-cancelled-booking-button" type="button" data-booking-id="${booking.id}">׳׳—׳™׳§׳” ׳׳”׳¨׳©׳™׳׳”</button>
+                    <button class="ghost-button hide-cancelled-booking-button" type="button" data-booking-id="${booking.id}">מחיקה מהרשימה</button>
                   </div>
                 `
           }
@@ -2028,7 +2028,7 @@ function renderSellerCalendar() {
     .sort((a, b) => a.booking_time.localeCompare(b.booking_time));
 
   if (!dailyBookings.length) {
-    sellerCalendarList.innerHTML = '<div class="notice-box">׳׳™׳ ׳×׳•׳¨׳™׳ ׳‘׳™׳•׳ ׳”׳–׳”.</div>';
+    sellerCalendarList.innerHTML = '<div class="notice-box">אין תורים ביום הזה.</div>';
     return;
   }
 
@@ -2047,12 +2047,12 @@ function renderSellerCalendar() {
           <span>${booking.service_name}</span>
           <span>${booking.staff_name}</span>
         </div>
-        ${booking.notes ? `<div class="booking-note">׳”׳¢׳¨׳”: ${booking.notes}</div>` : ""}
+        ${booking.notes ? `<div class="booking-note">הערה: ${booking.notes}</div>` : ""}
         ${
           booking.status === "approved"
             ? `
               <label class="arrival-status-field">
-                <span>׳׳¦׳‘ ׳”׳’׳¢׳”</span>
+                <span>מצב הגעה</span>
                 <select class="arrival-status-select" data-booking-id="${booking.id}">
                   ${buildArrivalStatusOptions(booking.arrival_status)}
                 </select>
@@ -2064,8 +2064,8 @@ function renderSellerCalendar() {
           ["pending", "approved"].includes(booking.status)
             ? `
               <div class="booking-card-actions">
-                <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">׳”׳•׳¡׳₪׳” ׳׳™׳•׳׳</button>
-                <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">׳‘׳™׳˜׳•׳ ׳×׳•׳¨</button>
+                <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
+                <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול תור</button>
               </div>
             `
             : ""
@@ -2077,7 +2077,7 @@ function renderSellerCalendar() {
 
 function renderSellerBookings() {
   if (!state.bookings.length) {
-    sellerBookingsList.innerHTML = '<div class="notice-box">׳¢׳“׳™׳™׳ ׳׳™׳ ׳‘׳§׳©׳•׳× ׳×׳•׳¨.</div>';
+    sellerBookingsList.innerHTML = '<div class="notice-box">עדיין אין בקשות תור.</div>';
     return;
   }
 
@@ -2098,12 +2098,12 @@ function renderSellerBookings() {
           <span>${booking.booking_time}</span>
           <span>${booking.staff_name}</span>
         </div>
-        ${booking.notes ? `<div class="booking-note">׳”׳¢׳¨׳”: ${booking.notes}</div>` : ""}
+        ${booking.notes ? `<div class="booking-note">הערה: ${booking.notes}</div>` : ""}
         ${
           booking.status === "approved"
             ? `
               <label class="arrival-status-field">
-                <span>׳׳¦׳‘ ׳”׳’׳¢׳”</span>
+                <span>מצב הגעה</span>
                 <select class="arrival-status-select" data-booking-id="${booking.id}">
                   ${buildArrivalStatusOptions(booking.arrival_status)}
                 </select>
@@ -2115,17 +2115,17 @@ function renderSellerBookings() {
           booking.status === "pending"
             ? `
               <div class="seller-actions">
-                <button class="primary-button approve-booking-button" type="button" data-booking-id="${booking.id}">׳׳™׳©׳•׳¨ ׳×׳•׳¨</button>
-                <button class="danger-button reject-booking-button" type="button" data-booking-id="${booking.id}">׳“׳—׳™׳™׳× ׳×׳•׳¨</button>
-                <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">׳”׳•׳¡׳₪׳” ׳׳™׳•׳׳</button>
-                <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">׳‘׳™׳˜׳•׳ ׳×׳•׳¨</button>
+                <button class="primary-button approve-booking-button" type="button" data-booking-id="${booking.id}">אישור תור</button>
+                <button class="danger-button reject-booking-button" type="button" data-booking-id="${booking.id}">דחיית תור</button>
+                <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
+                <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול תור</button>
               </div>
             `
             : ["approved"].includes(booking.status)
               ? `
                 <div class="seller-actions">
-                  <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">׳”׳•׳¡׳₪׳” ׳׳™׳•׳׳</button>
-                  <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">׳‘׳™׳˜׳•׳ ׳×׳•׳¨</button>
+                  <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
+                  <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול תור</button>
                 </div>
               `
               : ""
@@ -2134,8 +2134,8 @@ function renderSellerBookings() {
           booking.status === "rejected" && isRejectUndoActiveForBooking(booking.id)
             ? `
               <div class="undo-strip">
-                <span>׳”׳×׳•׳¨ ׳ ׳“׳—׳”. ׳׳₪׳©׳¨ ׳׳‘׳˜׳ ׳׳× ׳”׳“׳—׳™׳™׳” ׳‘׳׳©׳ ׳›׳׳” ׳©׳ ׳™׳•׳×.</span>
-                <button class="ghost-button undo-reject-button" type="button" data-booking-id="${booking.id}">׳‘׳™׳˜׳•׳ ׳“׳—׳™׳™׳”</button>
+                <span>התור נדחה. אפשר לבטל את הדחייה במשך כמה שניות.</span>
+                <button class="ghost-button undo-reject-button" type="button" data-booking-id="${booking.id}">ביטול דחייה</button>
               </div>
             `
             : ""
@@ -2153,7 +2153,7 @@ function renderEditors() {
         <input type="text" value="${service.category}" data-service-field="category">
         <input type="number" min="0" value="${service.price}" data-service-field="price">
         <input type="number" min="5" step="5" value="${service.duration_minutes}" data-service-field="duration_minutes">
-        <button class="danger-button remove-service-button" type="button">׳׳—׳™׳§׳”</button>
+        <button class="danger-button remove-service-button" type="button">מחיקה</button>
       </div>
     `)
     .join("");
@@ -2161,22 +2161,22 @@ function renderEditors() {
   hoursEditor.innerHTML = [...state.workingHours]
     ? `
       <div class="editor-row editor-row-labels" aria-hidden="true">
-        <span>׳™׳•׳</span>
-        <span>׳₪׳×׳™׳—׳”</span>
-        <span>׳¡׳’׳™׳¨׳”</span>
-        <span>׳׳¨׳•׳•׳— ׳‘׳™׳ ׳×׳•׳¨׳™׳</span>
-        <span>׳׳¦׳‘ ׳™׳•׳</span>
+        <span>יום</span>
+        <span>פתיחה</span>
+        <span>סגירה</span>
+        <span>מרווח בין תורים</span>
+        <span>מצב יום</span>
       </div>
       ${[...state.workingHours]
         .sort((a, b) => a.day_of_week - b.day_of_week)
         .map((row) => `
           <div class="editor-row editor-row-hours" data-hour-id="${row.id}">
-            <input type="text" value="${row.day_label}" placeholder="׳™׳•׳" data-hour-field="day_label">
+            <input type="text" value="${row.day_label}" placeholder="יום" data-hour-field="day_label">
             <input type="time" value="${row.opens_at || ""}" data-hour-field="opens_at">
             <input type="time" value="${row.closes_at || ""}" data-hour-field="closes_at">
-            <input type="number" min="5" step="5" value="${row.slot_interval_minutes || 30}" title="׳׳¡׳₪׳¨ ׳”׳“׳§׳•׳× ׳‘׳™׳ ׳×׳—׳™׳׳× ׳×׳•׳¨ ׳׳—׳“ ׳׳×׳—׳™׳׳× ׳”׳×׳•׳¨ ׳”׳‘׳" placeholder="׳“׳§׳•׳× ׳‘׳™׳ ׳×׳•׳¨׳™׳" data-hour-field="slot_interval_minutes">
+            <input type="number" min="5" step="5" value="${row.slot_interval_minutes || 30}" title="מספר הדקות בין תחילת תור אחד לתחילת התור הבא" placeholder="דקות בין תורים" data-hour-field="slot_interval_minutes">
             <button class="ghost-button toggle-hour-button ${row.is_closed ? "is-closed" : "is-open"}" type="button" data-hour-toggle="${row.id}">
-              ${row.is_closed ? "׳”׳™׳•׳ ׳¡׳’׳•׳¨" : "׳”׳™׳•׳ ׳₪׳×׳•׳—"}
+              ${row.is_closed ? "היום סגור" : "היום פתוח"}
             </button>
           </div>
         `)
@@ -2245,7 +2245,7 @@ function ensureServiceSelected() {
   if (getSelectedServiceBundle()) {
     return true;
   }
-  appUi.toast("׳¦׳¨׳™׳ ׳׳‘׳—׳•׳¨ ׳׳₪׳—׳•׳× ׳©׳™׳¨׳•׳× ׳׳—׳“ ׳׳₪׳ ׳™ ׳©׳׳׳©׳™׳›׳™׳.", { variant: "error" });
+  appUi.toast("צריך לבחור לפחות שירות אחד לפני שממשיכים.", { variant: "error" });
   goToStep(1);
   return false;
 }
@@ -2257,7 +2257,7 @@ function ensureStaffSelected() {
   if (getSelectedStaff()) {
     return true;
   }
-  appUi.toast("׳¦׳¨׳™׳ ׳׳‘׳—׳•׳¨ ׳׳©׳× ׳¦׳•׳•׳× ׳׳₪׳ ׳™ ׳©׳׳׳©׳™׳›׳™׳.", { variant: "error" });
+  appUi.toast("צריך לבחור אשת צוות לפני שממשיכים.", { variant: "error" });
   goToStep(2);
   return false;
 }
@@ -2266,7 +2266,7 @@ function ensureScheduleSelected() {
   if (uiState.selectedDate && uiState.selectedTime) {
     return true;
   }
-  appUi.toast("׳¦׳¨׳™׳ ׳׳‘׳—׳•׳¨ ׳™׳•׳ ׳•׳©׳¢׳” ׳׳₪׳ ׳™ ׳©׳׳׳©׳™׳›׳™׳.", { variant: "error" });
+  appUi.toast("צריך לבחור יום ושעה לפני שממשיכים.", { variant: "error" });
   goToStep(3);
   return false;
 }
@@ -2684,12 +2684,12 @@ customerSignupForm?.addEventListener("submit", async (event) => {
   const normalizedPhone = normalizePhoneNumber(phone);
 
   if (!firstName || !lastName || !normalizedPhone || !email || !password || !confirmPassword) {
-    appUi.toast("׳¦׳¨׳™׳ ׳׳׳׳ ׳׳× ׳›׳ ׳”׳₪׳¨׳˜׳™׳ ׳›׳“׳™ ׳׳™׳¦׳•׳¨ ׳—׳©׳‘׳•׳.", { variant: "error" });
+    appUi.toast("צריך למלא את כל הפרטים כדי ליצור חשבון.", { variant: "error" });
     return;
   }
 
   if (password !== confirmPassword) {
-    appUi.toast("׳”׳¡׳™׳¡׳׳׳•׳× ׳׳ ׳×׳•׳׳׳•׳×.", { variant: "error" });
+    appUi.toast("הסיסמאות לא תואמות.", { variant: "error" });
     return;
   }
 
@@ -2724,10 +2724,10 @@ customerSignupForm?.addEventListener("submit", async (event) => {
       phone
     });
     if (isCustomerBlocked(normalizedPhone)) {
-      appUi.toast("׳”׳×׳—׳‘׳¨׳×, ׳׳‘׳ ׳”׳—׳©׳‘׳•׳ ׳—׳¡׳•׳ ׳›׳¨׳’׳¢ ׳׳§׳‘׳™׳¢׳× ׳×׳•׳¨׳™׳ ׳—׳“׳©׳™׳.", { variant: "warning" });
+      appUi.toast("התחברת, אבל החשבון חסום כרגע לקביעת תורים חדשים.", { variant: "warning" });
     }
   } catch (error) {
-    appUi.toast(error?.message || "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳™׳¦׳•׳¨ ׳—׳©׳‘׳•׳ ׳׳§׳•׳—׳”.", { variant: "error" });
+    appUi.toast(error?.message || "לא הצלחנו ליצור חשבון לקוחה.", { variant: "error" });
   }
 });
 
@@ -2738,7 +2738,7 @@ customerLoginForm.addEventListener("submit", async (event) => {
   const password = String(formData.get("password") || "");
 
   if (!email || !password) {
-    appUi.toast("׳¦׳¨׳™׳ ׳׳׳׳ ׳׳™׳׳™׳™׳ ׳•׳¡׳™׳¡׳׳”.", { variant: "error" });
+    appUi.toast("צריך למלא אימייל וסיסמה.", { variant: "error" });
     return;
   }
 
@@ -2760,7 +2760,7 @@ customerLoginForm.addEventListener("submit", async (event) => {
     await supabaseApi.signInCustomer({ email, password });
     await finalizeCustomerLogin();
   } catch (error) {
-    appUi.toast(error?.message || "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳”׳×׳—׳‘׳¨.", { variant: "error" });
+    appUi.toast(error?.message || "לא הצלחנו להתחבר.", { variant: "error" });
   }
 });
 
@@ -2783,15 +2783,15 @@ customerForgotPasswordButton?.addEventListener("click", async () => {
 
   const email = String(customerLoginForm?.elements?.email?.value || "").trim().toLowerCase();
   if (!email) {
-    appUi.toast("׳¦׳¨׳™׳ ׳׳׳׳ ׳׳™׳׳™׳™׳ ׳›׳“׳™ ׳׳©׳׳•׳— ׳§׳™׳©׳•׳¨ ׳׳׳™׳₪׳•׳¡ ׳¡׳™׳¡׳׳”.", { variant: "error" });
+    appUi.toast("צריך למלא אימייל כדי לשלוח קישור לאיפוס סיסמה.", { variant: "error" });
     return;
   }
 
   try {
     await supabaseApi.sendCustomerPasswordReset(email);
-    appUi.toast("׳©׳׳—׳ ׳• ׳§׳™׳©׳•׳¨ ׳׳׳™׳₪׳•׳¡ ׳¡׳™׳¡׳׳” ׳׳׳™׳׳™׳™׳ ׳©׳”׳§׳׳“׳×.", { variant: "success" });
+    appUi.toast("שלחנו קישור לאיפוס סיסמה לאימייל שהקלדת.", { variant: "success" });
   } catch (error) {
-    appUi.toast(error?.message || "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳©׳׳•׳— ׳§׳™׳©׳•׳¨ ׳׳׳™׳₪׳•׳¡ ׳¡׳™׳¡׳׳”.", { variant: "error" });
+    appUi.toast(error?.message || "לא הצלחנו לשלוח קישור לאיפוס סיסמה.", { variant: "error" });
   }
 });
 
@@ -2803,7 +2803,7 @@ customerRecoveryForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   if (!supabaseEnabled) {
-    appUi.toast("׳—׳™׳‘׳•׳¨ Supabase ׳¢׳“׳™׳™׳ ׳׳ ׳–׳׳™׳ ׳‘׳“׳£ ׳”׳–׳”.", { variant: "error" });
+    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
     return;
   }
 
@@ -2812,18 +2812,18 @@ customerRecoveryForm?.addEventListener("submit", async (event) => {
   const confirmPassword = String(formData.get("confirmPassword") || "");
 
   if (!newPassword || !confirmPassword) {
-    appUi.toast("׳™׳© ׳׳׳׳ ׳׳× ׳©׳×׳™ ׳”׳¡׳™׳¡׳׳׳•׳×.", { variant: "error" });
+    appUi.toast("יש למלא את שתי הסיסמאות.", { variant: "error" });
     return;
   }
 
   if (newPassword !== confirmPassword) {
-    appUi.toast("׳”׳¡׳™׳¡׳׳׳•׳× ׳׳ ׳×׳•׳׳׳•׳×.", { variant: "error" });
+    appUi.toast("הסיסמאות לא תואמות.", { variant: "error" });
     return;
   }
 
   try {
     await supabaseApi.updateOwnerPassword(newPassword);
-    appUi.toast("׳”׳¡׳™׳¡׳׳” ׳¢׳•׳“׳›׳ ׳”, ׳׳₪׳©׳¨ ׳׳”׳×׳—׳‘׳¨.", { variant: "success" });
+    appUi.toast("הסיסמה עודכנה, אפשר להתחבר.", { variant: "success" });
     await supabaseApi.signOut();
     session.role = null;
     session.customerPhone = null;
@@ -2831,7 +2831,7 @@ customerRecoveryForm?.addEventListener("submit", async (event) => {
     window.history.replaceState({}, document.title, window.location.pathname);
     showCustomerLoginPanel();
   } catch (error) {
-    appUi.toast(error?.message || "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳¢׳“׳›׳ ׳׳× ׳”׳¡׳™׳¡׳׳”.", { variant: "error" });
+    appUi.toast(error?.message || "לא הצלחנו לעדכן את הסיסמה.", { variant: "error" });
   }
 });
 
@@ -2842,7 +2842,7 @@ sellerLoginForm.addEventListener("submit", async (event) => {
   const password = String(formData.get("password"));
 
   if (!supabaseEnabled) {
-    appUi.toast("׳—׳™׳‘׳•׳¨ Supabase ׳¢׳“׳™׳™׳ ׳׳ ׳–׳׳™׳ ׳‘׳“׳£ ׳”׳–׳”.", { variant: "error" });
+    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
     return;
   }
 
@@ -2852,7 +2852,7 @@ sellerLoginForm.addEventListener("submit", async (event) => {
     sessionStorage.setItem(SELLER_SESSION_KEY, "1");
     window.location.href = "owner.html";
   } catch (error) {
-    appUi.toast(error?.message || "׳₪׳¨׳˜׳™ ׳”׳›׳ ׳™׳¡׳” ׳׳ ׳×׳§׳™׳ ׳™׳.", { variant: "error" });
+    appUi.toast(error?.message || "פרטי הכניסה לא תקינים.", { variant: "error" });
   }
 });
 
@@ -2878,12 +2878,12 @@ bookingForm.addEventListener("submit", async (event) => {
   const notes = String(bookingForm.elements.notes.value).trim();
 
   if (isCustomerBlocked()) {
-    appUi.toast("׳”׳—׳©׳‘׳•׳ ׳©׳׳ ׳—׳¡׳•׳ ׳›׳¨׳’׳¢ ׳׳§׳‘׳™׳¢׳× ׳×׳•׳¨׳™׳ ׳—׳“׳©׳™׳.", { variant: "error" });
+    appUi.toast("החשבון שלך חסום כרגע לקביעת תורים חדשים.", { variant: "error" });
     return;
   }
 
   if (!fullName || !phone) {
-    appUi.toast("׳¦׳¨׳™׳ ׳׳׳׳ ׳©׳ ׳׳׳ ׳•׳˜׳׳₪׳•׳.", { variant: "error" });
+    appUi.toast("צריך למלא שם מלא וטלפון.", { variant: "error" });
     return;
   }
 
@@ -2893,7 +2893,7 @@ bookingForm.addEventListener("submit", async (event) => {
   try {
     const assignedStaff = resolveAssignedStaff(uiState.selectedDate, uiState.selectedTime, serviceBundle);
     if (!assignedStaff) {
-      appUi.toast("׳”׳©׳¢׳” ׳©׳ ׳‘׳—׳¨׳” ׳›׳‘׳¨ ׳׳ ׳–׳׳™׳ ׳”. ׳‘׳—׳¨׳™ ׳©׳¢׳” ׳׳—׳¨׳×.", { variant: "warning" });
+      appUi.toast("השעה שנבחרה כבר לא זמינה. בחרי שעה אחרת.", { variant: "warning" });
       uiState.selectedTime = "";
       rerenderAll();
       goToStep(3);
@@ -2978,7 +2978,7 @@ sellerCredentialsForm.addEventListener("submit", async (event) => {
   const password = String(sellerCredentialsForm.elements.password.value);
 
   if (!username) {
-    appUi.toast("׳©׳ ׳׳©׳×׳׳© ׳׳ ׳™׳›׳•׳ ׳׳”׳™׳•׳× ׳¨׳™׳§.", { variant: "error" });
+    appUi.toast("שם משתמש לא יכול להיות ריק.", { variant: "error" });
     return;
   }
 
@@ -2995,17 +2995,17 @@ sellerCredentialsForm.addEventListener("submit", async (event) => {
     sellerCredentialsForm.elements.password.value = "";
     saveState();
     rerenderAll();
-    appUi.toast("׳₪׳¨׳˜׳™ ׳”׳”׳×׳—׳‘׳¨׳•׳× ׳ ׳©׳׳¨׳• ׳‘-Supabase Auth.", { variant: "success" });
+    appUi.toast("פרטי ההתחברות נשמרו ב-Supabase Auth.", { variant: "success" });
   } catch (error) {
-    appUi.toast(error?.message || "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳¢׳“׳›׳ ׳׳× ׳₪׳¨׳˜׳™ ׳”׳”׳×׳—׳‘׳¨׳•׳×.", { variant: "error" });
+    appUi.toast(error?.message || "לא הצלחנו לעדכן את פרטי ההתחברות.", { variant: "error" });
   }
 });
 
 addServiceButton.addEventListener("click", () => {
   state.services.push({
     id: window.crypto?.randomUUID ? window.crypto.randomUUID() : `service-${Date.now()}`,
-    category: "׳§׳˜׳’׳•׳¨׳™׳” ׳¨׳׳©׳™׳×",
-    name: "׳©׳™׳¨׳•׳× ׳—׳“׳©",
+    category: "קטגוריה ראשית",
+    name: "שירות חדש",
     price: 0,
     duration_minutes: 30
   });
@@ -3142,7 +3142,7 @@ sellerCalendarList.addEventListener("click", async (event) => {
     return;
   }
 
-  if (!(await appUi.confirm("׳”׳׳ ׳׳‘׳˜׳ ׳׳× ׳”׳×׳•׳¨ ׳”׳–׳”?", { title: "׳‘׳™׳˜׳•׳ ׳×׳•׳¨" }))) {
+  if (!(await appUi.confirm("האם לבטל את התור הזה?", { title: "ביטול תור" }))) {
     return;
   }
 
@@ -3168,8 +3168,8 @@ sellerCalendarList.addEventListener("change", (event) => {
   const nextArrivalStatus = normalizeArrivalStatus(target.value, "approved");
   applyNoShowCounterChange(booking, nextArrivalStatus);
   booking.arrival_status = nextArrivalStatus;
-  notifyOwnerAppointmentUpdated(booking, `׳¢׳•׳“׳›׳ ׳׳¦׳‘ ׳”׳’׳¢׳” ׳${formatArrivalStatus(booking.arrival_status)}`);
-  notifyCustomerAppointmentUpdated(booking, `׳׳¦׳‘ ׳”׳”׳’׳¢׳” ׳¢׳•׳“׳›׳ ׳${formatArrivalStatus(booking.arrival_status)}`);
+  notifyOwnerAppointmentUpdated(booking, `עודכן מצב הגעה ל${formatArrivalStatus(booking.arrival_status)}`);
+  notifyCustomerAppointmentUpdated(booking, `מצב ההגעה עודכן ל${formatArrivalStatus(booking.arrival_status)}`);
   saveState();
   rerenderAll();
 });
@@ -3200,7 +3200,7 @@ sellerBookingsList.addEventListener("click", async (event) => {
       return;
     }
 
-    if (!(await appUi.confirm("׳”׳׳ ׳׳‘׳˜׳ ׳׳× ׳”׳×׳•׳¨ ׳”׳–׳”?", { title: "׳‘׳™׳˜׳•׳ ׳×׳•׳¨" }))) {
+    if (!(await appUi.confirm("האם לבטל את התור הזה?", { title: "ביטול תור" }))) {
       return;
     }
 
@@ -3232,8 +3232,8 @@ sellerBookingsList.addEventListener("click", async (event) => {
       notifyOwnerAppointmentRescheduled(booking, previousBooking);
       notifyCustomerAppointmentChanged(booking, previousBooking);
     } else {
-      notifyOwnerAppointmentUpdated(booking, "׳׳•׳©׳¨ ׳×׳•׳¨");
-      notifyCustomerAppointmentUpdated(booking, "׳”׳×׳•׳¨ ׳©׳׳ ׳׳•׳©׳¨");
+      notifyOwnerAppointmentUpdated(booking, "אושר תור");
+      notifyCustomerAppointmentUpdated(booking, "התור שלך אושר");
     }
   }
 
@@ -3242,8 +3242,8 @@ sellerBookingsList.addEventListener("click", async (event) => {
     booking.status = "rejected";
     booking.arrival_status = null;
     startRejectUndo(booking.id, previousStatus);
-    notifyOwnerAppointmentUpdated(booking, "׳ ׳“׳—׳” ׳×׳•׳¨");
-    notifyCustomerAppointmentUpdated(booking, "׳”׳×׳•׳¨ ׳©׳׳ ׳ ׳“׳—׳”");
+    notifyOwnerAppointmentUpdated(booking, "נדחה תור");
+    notifyCustomerAppointmentUpdated(booking, "התור שלך נדחה");
   }
 
   saveState();
@@ -3264,8 +3264,8 @@ sellerBookingsList.addEventListener("change", (event) => {
   const nextArrivalStatus = normalizeArrivalStatus(target.value, "approved");
   applyNoShowCounterChange(booking, nextArrivalStatus);
   booking.arrival_status = nextArrivalStatus;
-  notifyOwnerAppointmentUpdated(booking, `׳¢׳•׳“׳›׳ ׳׳¦׳‘ ׳”׳’׳¢׳” ׳${formatArrivalStatus(booking.arrival_status)}`);
-  notifyCustomerAppointmentUpdated(booking, `׳׳¦׳‘ ׳”׳”׳’׳¢׳” ׳¢׳•׳“׳›׳ ׳${formatArrivalStatus(booking.arrival_status)}`);
+  notifyOwnerAppointmentUpdated(booking, `עודכן מצב הגעה ל${formatArrivalStatus(booking.arrival_status)}`);
+  notifyCustomerAppointmentUpdated(booking, `מצב ההגעה עודכן ל${formatArrivalStatus(booking.arrival_status)}`);
   saveState();
   rerenderAll();
 });
@@ -3315,7 +3315,7 @@ myBookingsList.addEventListener("click", async (event) => {
       return;
     }
 
-    if (!(await appUi.confirm("׳׳”׳¡׳×׳™׳¨ ׳׳× ׳”׳×׳•׳¨ ׳”׳–׳” ׳׳”׳¨׳©׳™׳׳” ׳©׳׳?", { title: "׳”׳¡׳×׳¨׳× ׳×׳•׳¨" }))) {
+    if (!(await appUi.confirm("להסתיר את התור הזה מהרשימה שלך?", { title: "הסתרת תור" }))) {
       return;
     }
 
@@ -3329,7 +3329,7 @@ myBookingsList.addEventListener("click", async (event) => {
         rerenderAll();
       }
     } catch (error) {
-      appUi.toast(error?.message || "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳”׳¡׳×׳™׳¨ ׳׳× ׳”׳×׳•׳¨.", { variant: "error" });
+      appUi.toast(error?.message || "לא הצלחנו להסתיר את התור.", { variant: "error" });
     }
     return;
   }
@@ -3350,13 +3350,13 @@ myBookingsList.addEventListener("click", async (event) => {
         booking.attendance_confirmation_answered_at = new Date().toISOString();
         notifyOwnerAppointmentUpdated(
           booking,
-          response === "confirmed" ? "׳”׳׳§׳•׳—׳” ׳׳™׳©׳¨׳” ׳”׳’׳¢׳”" : "׳”׳׳§׳•׳—׳” ׳¡׳™׳׳ ׳” ׳©׳׳ ׳×׳’׳™׳¢"
+          response === "confirmed" ? "הלקוחה אישרה הגעה" : "הלקוחה סימנה שלא תגיע"
         );
         saveState();
         rerenderAll();
       }
     } catch (error) {
-      appUi.toast(error?.message || "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳©׳׳•׳¨ ׳׳× ׳׳™׳©׳•׳¨ ׳”׳”׳’׳¢׳”.", { variant: "error" });
+      appUi.toast(error?.message || "לא הצלחנו לשמור את אישור ההגעה.", { variant: "error" });
     }
     return;
   }
@@ -3375,7 +3375,7 @@ myBookingsList.addEventListener("click", async (event) => {
     return;
   }
 
-  if (!(await appUi.confirm("׳”׳׳ ׳׳‘׳˜׳ ׳׳× ׳”׳×׳•׳¨ ׳”׳–׳”?", { title: "׳‘׳™׳˜׳•׳ ׳×׳•׳¨" }))) {
+  if (!(await appUi.confirm("האם לבטל את התור הזה?", { title: "ביטול תור" }))) {
     return;
   }
 
@@ -3392,7 +3392,7 @@ myBookingsList.addEventListener("click", async (event) => {
       rerenderAll();
     }
   } catch (error) {
-    appUi.toast(error?.message || "׳׳ ׳”׳¦׳׳—׳ ׳• ׳׳‘׳˜׳ ׳׳× ׳”׳×׳•׳¨.", { variant: "error" });
+    appUi.toast(error?.message || "לא הצלחנו לבטל את התור.", { variant: "error" });
   }
 });
 
@@ -3441,4 +3441,3 @@ async function initializeApp() {
 }
 
 void initializeApp();
-
