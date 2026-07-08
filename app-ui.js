@@ -19,6 +19,66 @@
     confirmOverlay = layer.querySelector(".app-confirm-overlay");
   }
 
+  function translateMessage(message) {
+    const original = String(message || "").trim();
+    if (!original) {
+      return "";
+    }
+
+    const normalized = original.toLowerCase();
+
+    if (/[א-ת]/.test(original)) {
+      return original;
+    }
+
+    if (normalized.includes("invalid login credentials")) {
+      return "פרטי ההתחברות לא נכונים.";
+    }
+
+    if (normalized.includes("email rate limit exceeded") || normalized.includes("rate limit")) {
+      return "נשלחו יותר מדי בקשות בזמן קצר. חכו רגע ונסו שוב.";
+    }
+
+    if (normalized.includes("failed to fetch")) {
+      return "לא הצלחנו להתחבר לשרת כרגע. נסו שוב בעוד רגע.";
+    }
+
+    if (normalized.includes("permission denied")) {
+      return "אין הרשאה לבצע את הפעולה הזאת.";
+    }
+
+    if (normalized.includes("supabase client is not configured")) {
+      return "החיבור למערכת עדיין לא הוגדר בדף הזה.";
+    }
+
+    if (
+      normalized.includes("user already registered")
+      || normalized.includes("already registered")
+      || normalized.includes("already exists")
+      || normalized.includes("email address is already")
+    ) {
+      return "כבר קיים חשבון עם הפרטים האלה.";
+    }
+
+    if (
+      normalized.includes("password should be at least")
+      || normalized.includes("password is too weak")
+      || normalized.includes("weak password")
+    ) {
+      return "הסיסמה חלשה מדי. בחרו סיסמה חזקה יותר.";
+    }
+
+    if (normalized.includes("email not confirmed")) {
+      return "צריך לאשר את כתובת האימייל לפני שמתחברים.";
+    }
+
+    if (normalized.includes("networkerror") || normalized.includes("network error")) {
+      return "יש כרגע בעיית תקשורת. נסו שוב בעוד רגע.";
+    }
+
+    return original;
+  }
+
   function toast(message, options = {}) {
     ensureLayer();
 
@@ -42,8 +102,8 @@
       </div>
       <button class="app-toast-close" type="button" aria-label="סגירת הודעה">×</button>
     `;
-    toastElement.querySelector("strong").textContent = title;
-    toastElement.querySelector("p").textContent = String(message || "");
+    toastElement.querySelector("strong").textContent = translateMessage(title);
+    toastElement.querySelector("p").textContent = translateMessage(message);
     toastStack.appendChild(toastElement);
 
     let timeoutId = null;
@@ -205,6 +265,7 @@
 
   window.AppUi = {
     toast,
-    confirm: confirmAction
+    confirm: confirmAction,
+    translateMessage
   };
 })();

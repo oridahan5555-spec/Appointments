@@ -312,7 +312,8 @@ function setOwnerAccessMessage(message = "", isError = false) {
 }
 
 function showOwnerSupabaseError(error) {
-  const message = String(error?.message || "לא הצלחנו לעדכן נתונים מ-Supabase.");
+  const message = appUi.translateMessage?.(error?.message || "לא הצלחנו לעדכן נתונים מ-Supabase.")
+    || String(error?.message || "לא הצלחנו לעדכן נתונים מ-Supabase.");
   const now = Date.now();
   if (message === ownerSupabaseErrorMessage && now - ownerSupabaseErrorTimestamp < 5000) {
     return;

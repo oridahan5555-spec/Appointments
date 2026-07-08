@@ -757,6 +757,7 @@ let publicRealtimeCleanups = [];
 let personalRealtimeCleanups = [];
 let publicRefreshTimeoutId = null;
 let isHydratingPublicState = false;
+let isCustomerPasswordRecoveryMode = false;
 let publicSupabaseErrorMessage = "";
 let publicSupabaseErrorTimestamp = 0;
 let publicLoadedFromSupabase = false;
@@ -784,7 +785,8 @@ function showPublicLoadingState(message = "טוען נתוני עסק...") {
 }
 
 function showPublicSupabaseError(error) {
-  const message = String(error?.message || "לא הצלחנו לטעון את נתוני העסק מ-Supabase.");
+  const message = appUi.translateMessage?.(error?.message || "לא הצלחנו לטעון את נתוני העסק מ-Supabase.")
+    || String(error?.message || "לא הצלחנו לטעון את נתוני העסק מ-Supabase.");
   const now = Date.now();
   if (message === publicSupabaseErrorMessage && now - publicSupabaseErrorTimestamp < 5000) {
     return;
@@ -2623,6 +2625,7 @@ function showCustomerSignupPanel() {
 }
 
 function showCustomerLoginPanel() {
+  isCustomerPasswordRecoveryMode = false;
   customerChooserPanel?.classList.remove("is-active");
   customerSignupForm?.classList.remove("is-active");
   customerLoginForm?.classList.add("is-active");
@@ -2630,6 +2633,7 @@ function showCustomerLoginPanel() {
 }
 
 function showCustomerRecoveryPanel() {
+  isCustomerPasswordRecoveryMode = true;
   setCustomerEmailConfirmationButtonVisible(false);
   authModal.classList.remove("is-hidden");
   showAuthTab("customer");
@@ -3105,6 +3109,12 @@ customerForgotPasswordButton?.addEventListener("click", async () => {
   }
 
   try {
+    clearRememberedCustomerSession();
+    session.role = null;
+    session.customerPhone = null;
+    session.authUserId = null;
+    await supabaseApi.signOut().catch(() => {});
+    rerenderAll();
     await supabaseApi.sendCustomerPasswordReset(email);
     appUi.toast("שלחנו קישור לאיפוס סיסמה לאימייל שהקלדת.", { variant: "success" });
   } catch (error) {
@@ -3142,6 +3152,8 @@ customerRecoveryForm?.addEventListener("submit", async (event) => {
     await supabaseApi.updateOwnerPassword(newPassword);
     appUi.toast("הסיסמה עודכנה, אפשר להתחבר.", { variant: "success" });
     await supabaseApi.signOut();
+    isCustomerPasswordRecoveryMode = false;
+    clearRememberedCustomerSession();
     session.role = null;
     session.customerPhone = null;
     session.authUserId = null;
@@ -3744,9 +3756,20 @@ async function initializeApp() {
 
     supabaseApi.onAuthStateChange(async (event) => {
       if (event === "PASSWORD_RECOVERY") {
+        clearRememberedCustomerSession();
+        session.role = null;
+        session.customerPhone = null;
+        session.authUserId = null;
         showCustomerRecoveryPanel();
+        return;
+      }
+      if (event === "SIGNED_OUT") {
+        isCustomerPasswordRecoveryMode = false;
       }
       try {
+        if (isCustomerPasswordRecoveryMode) {
+          return;
+        }
         await refreshStateFromSupabase();
         setupPersonalRealtimeSubscriptions();
       } catch (error) {
