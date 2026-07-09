@@ -219,15 +219,23 @@
         </section>
 
         <form id="bookingForm" class="booking-form">
-          <label class="field">
+          <div class="notice-box booking-auth-prompt is-hidden" id="bookingAuthPrompt">
+            <strong>כדי לקבוע תור צריך חשבון לקוחה</strong>
+            <span>אם זו הפעם הראשונה, צרי חשבון עם כל הפרטים. אם כבר נרשמת, התחברי והפרטים יימשכו אוטומטית.</span>
+            <div class="auth-choice-grid">
+              <button class="primary-button" id="bookingSignupPromptButton" type="button">כניסה ראשונה</button>
+              <button class="ghost-button" id="bookingExistingPromptButton" type="button">כבר יש לי חשבון</button>
+            </div>
+          </div>
+          <label class="field booking-profile-field">
             <span>שם מלא</span>
             <input type="text" name="fullName" required>
           </label>
-          <label class="field">
+          <label class="field booking-profile-field">
             <span>טלפון</span>
             <input type="tel" name="phone" required>
           </label>
-          <label class="field">
+          <label class="field booking-profile-field">
             <span>הערות</span>
             <textarea name="notes" rows="3" placeholder="לא חובה"></textarea>
           </label>

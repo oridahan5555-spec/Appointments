@@ -143,6 +143,9 @@ const bookingPreparationMessage = document.getElementById("bookingPreparationMes
 const bookingSuccessSummary = document.getElementById("bookingSuccessSummary");
 const bookingSuccessCalendarButton = document.getElementById("bookingSuccessCalendarButton");
 const bookingSubmitButton = document.getElementById("bookingSubmitButton");
+const bookingAuthPrompt = document.getElementById("bookingAuthPrompt");
+const bookingSignupPromptButton = document.getElementById("bookingSignupPromptButton");
+const bookingExistingPromptButton = document.getElementById("bookingExistingPromptButton");
 const changeModeBanner = document.getElementById("changeModeBanner");
 const changeModeText = document.getElementById("changeModeText");
 const cancelChangeModeButton = document.getElementById("cancelChangeModeButton");
@@ -1859,7 +1862,9 @@ function joinWaitlistForCurrentSelection() {
   const currentCustomer = getCurrentCustomer();
 
   if (session.role !== "customer") {
+    savePendingBookingDraft();
     openAuthModal("customer");
+    showCustomerChooserPanel();
     return;
   }
 
@@ -2169,6 +2174,7 @@ function renderDetailsForm() {
 
   const isLoggedIn = session.role === "customer";
   const blockedCustomer = isCustomerBlocked();
+  bookingAuthPrompt?.classList.toggle("is-hidden", isLoggedIn);
   if (isLoggedIn) {
     detailsNotice.textContent = blockedCustomer
       ? "החשבון שלך חסום כרגע לקביעת תורים חדשים. אפשר לפנות לבעלת העסק כדי להסדיר את זה."
@@ -2179,11 +2185,19 @@ function renderDetailsForm() {
     detailsNotice.textContent = "כדי לאשר תור צריך להתחבר כלקוחה. בלי התחברות אי אפשר לשמור הזמנה.";
   }
 
+  if (!isLoggedIn) {
+    detailsNotice.textContent = "כדי לשמור את התור צריך להתחבר או ליצור חשבון לקוחה. הפרטים שתמלאי בחשבון יישמרו גם אצל בעלת העסק.";
+  }
+
   bookingSubmitButton.textContent = uiState.isBookingSubmitting
     ? "שומר..."
     : sourceBooking
       ? "שליחת שינוי תור"
       : "קבע תור";
+
+  if (!isLoggedIn && !uiState.isBookingSubmitting) {
+    bookingSubmitButton.textContent = "התחברות / כניסה ראשונה";
+  }
 
   Array.from(bookingForm.elements).forEach((element) => {
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLButtonElement) {
@@ -2192,7 +2206,14 @@ function renderDetailsForm() {
     }
   });
 
-  bookingSubmitButton.disabled = blockedCustomer || uiState.isBookingSubmitting;
+  bookingForm.querySelectorAll(".booking-profile-field").forEach((field) => {
+    field.classList.toggle("is-hidden", !isLoggedIn);
+    field.querySelectorAll("input, textarea").forEach((input) => {
+      input.disabled = !isLoggedIn;
+    });
+  });
+
+  bookingSubmitButton.disabled = (isLoggedIn && blockedCustomer) || uiState.isBookingSubmitting;
 }
 
 function renderCustomerBookings() {
@@ -2630,7 +2651,7 @@ function updateCustomerSignupProfileFields() {
   }
 
   customerSignupForm.querySelectorAll("[data-signup-profile-field]").forEach((field) => {
-    field.classList.toggle("is-hidden", hasBookingProfile);
+    field.classList.remove("is-hidden");
   });
 
   if (helper) {
@@ -2669,6 +2690,10 @@ function showCustomerChooserPanel() {
 function showCustomerSignupPanel() {
   setCustomerEmailConfirmationButtonVisible(false);
   updateCustomerSignupProfileFields();
+  const helper = customerSignupForm?.querySelector("[data-customer-signup-helper]");
+  if (helper) {
+    helper.textContent = "ממלאים פרטים פעם אחת, בוחרים אימייל וסיסמה, ואז אפשר לראות ולנהל את התורים שלך. הפרטים נשמרים גם אצל בעלת העסק.";
+  }
   customerChooserPanel?.classList.remove("is-active");
   customerSignupForm?.classList.add("is-active");
   customerLoginForm?.classList.remove("is-active");
@@ -2859,6 +2884,18 @@ openCustomerSignupButton?.addEventListener("click", () => {
 });
 
 openCustomerExistingLoginButton?.addEventListener("click", () => {
+  showCustomerLoginPanel();
+});
+
+bookingSignupPromptButton?.addEventListener("click", () => {
+  savePendingBookingDraft();
+  openAuthModal("customer");
+  showCustomerSignupPanel();
+});
+
+bookingExistingPromptButton?.addEventListener("click", () => {
+  savePendingBookingDraft();
+  openAuthModal("customer");
   showCustomerLoginPanel();
 });
 
@@ -3251,7 +3288,9 @@ bookingForm.addEventListener("submit", async (event) => {
   }
 
   if (session.role !== "customer") {
+    savePendingBookingDraft();
     openAuthModal("customer");
+    showCustomerChooserPanel();
     return;
   }
 

@@ -2206,6 +2206,21 @@ a.ghost-button {
   min-height: 54px;
 }
 
+.booking-auth-prompt {
+  display: grid;
+  gap: 12px;
+}
+
+.booking-auth-prompt strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.booking-auth-prompt span {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 @keyframes fadeSlide {
   from {
     opacity: 0;
