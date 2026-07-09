@@ -3075,7 +3075,17 @@ customerLoginForm.addEventListener("submit", async (event) => {
   }
 
   try {
-    await supabaseApi.signInCustomer({ email, password });
+    const draftName = parseFullName(
+      String(bookingForm?.elements?.fullName?.value || uiState.bookingDraft.fullName || "").trim()
+    );
+    const draftPhone = String(bookingForm?.elements?.phone?.value || uiState.bookingDraft.phone || "").trim();
+    await supabaseApi.signInCustomer({
+      email,
+      password,
+      phone: draftPhone,
+      firstName: draftName.firstName,
+      lastName: draftName.lastName
+    });
     await finalizeCustomerLogin();
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו להתחבר.", { variant: "error" });

@@ -487,7 +487,7 @@
         throw new Error("הטלפון או האימייל כבר שייכים לחשבון לקוחה אחר.");
       }
       if (String(error.message || "").includes("PHONE_REQUIRED_TO_CREATE_CUSTOMER")) {
-        throw new Error("כדי ליצור חשבון חדש חייבים טלפון תקין.");
+        throw new Error("התחברת, אבל חסרים פרטי לקוחה כדי להשלים את החשבון. מלאי את הפרטים בטופס התור ונסי שוב.");
       }
       throw error;
     }
