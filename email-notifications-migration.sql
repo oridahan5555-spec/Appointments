@@ -6,8 +6,24 @@ create extension if not exists pg_cron;
 
 -- Worker secret note:
 -- Set the same value in the Edge Function secret WORKER_SECRET and in the
--- database setting app.worker_secret so cron/trigger calls can send the
+-- private_app_config row below so cron/trigger calls can send the
 -- x-worker-secret header without exposing it to the browser.
+-- Replace PASTE_WORKER_SECRET_HERE before running this migration.
+
+create table if not exists public.private_app_config (
+  key text primary key,
+  value text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.private_app_config enable row level security;
+revoke all on public.private_app_config from public, anon, authenticated;
+
+insert into public.private_app_config (key, value, updated_at)
+values ('worker_secret', 'PASTE_WORKER_SECRET_HERE', now())
+on conflict (key) do update set
+  value = excluded.value,
+  updated_at = now();
 
 alter table public.customers
   add column if not exists email text;
@@ -600,7 +616,10 @@ stable
 security definer
 set search_path = public
 as $$
-  select coalesce(current_setting('app.worker_secret', true), '');
+  select coalesce(
+    (select value from public.private_app_config where key = 'worker_secret'),
+    ''
+  );
 $$;
 
 revoke all on function public.get_worker_secret() from public, anon, authenticated;
