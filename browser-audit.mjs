@@ -1,13 +1,23 @@
 import { createServer } from "node:http";
-import { readFile, stat } from "node:fs/promises";
-import { spawn } from "node:child_process";
+import { access, readFile, stat } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
 import { extname, join, normalize } from "node:path";
 import { tmpdir } from "node:os";
 
 const root = process.cwd();
 const port = 4173;
 const debuggingPort = 9300 + Math.floor(Math.random() * 500);
-const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+const browserCandidates = [
+  process.env.CHROME_PATH,
+  "msedge",
+  "chrome",
+  "google-chrome",
+  "chromium",
+  "chromium-browser",
+  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"
+].filter(Boolean);
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -16,6 +26,27 @@ const mimeTypes = {
 };
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function resolveBrowserPath() {
+  for (const candidate of browserCandidates) {
+    if (/[/\\]/.test(candidate)) {
+      try {
+        await access(candidate);
+        return candidate;
+      } catch (error) {
+        continue;
+      }
+    }
+    const lookup = process.platform === "win32"
+      ? spawnSync("where", [candidate], { stdio: "ignore" })
+      : spawnSync("sh", ["-lc", `command -v ${candidate}`], { stdio: "ignore" });
+    if (lookup.status === 0) {
+      return candidate;
+    }
+  }
+
+  throw new Error("Could not find Chrome or Edge. Set CHROME_PATH to the browser executable.");
+}
 
 function assert(condition, message) {
   if (!condition) {
@@ -40,12 +71,14 @@ const server = createServer(async (request, response) => {
 
 await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
 
-const browser = spawn(edgePath, [
+const browserPath = await resolveBrowserPath();
+const browser = spawn(browserPath, [
   "--headless=new",
   "--disable-gpu",
   "--disable-extensions",
   "--no-first-run",
   "--no-default-browser-check",
+  "--remote-allow-origins=*",
   `--remote-debugging-port=${debuggingPort}`,
   `--user-data-dir=${join(tmpdir(), `booking-audit-${Date.now()}`)}`,
   `http://127.0.0.1:${port}/index.html`
@@ -117,16 +150,17 @@ async function getPageTarget() {
       );
       if (target) return target;
     } catch (error) {
-      // Edge is still starting.
+      // Browser is still starting.
     }
     await wait(100);
   }
-  throw new Error("Could not connect to Edge");
+  throw new Error(`Could not connect to browser at ${browserPath}`);
 }
 
 const results = [];
 const consoleErrors = [];
 const failedRequests = [];
+const requestUrls = new Map();
 let client;
 
 async function test(name, callback) {
@@ -149,8 +183,13 @@ try {
   client.on("Log.entryAdded", ({ entry }) => {
     if (entry.level === "error") consoleErrors.push(entry.text);
   });
-  client.on("Network.loadingFailed", ({ errorText, canceled }) => {
-    if (!canceled) failedRequests.push(errorText);
+  client.on("Network.requestWillBeSent", ({ requestId, request }) => {
+    requestUrls.set(requestId, request.url);
+  });
+  client.on("Network.loadingFailed", ({ requestId, errorText, canceled, type }) => {
+    const requestUrl = requestUrls.get(requestId) || "";
+    const isLocalScript = requestUrl.startsWith(`http://127.0.0.1:${port}/`) && type === "Script";
+    if (!canceled && isLocalScript) failedRequests.push(`${requestUrl}: ${errorText}`);
   });
 
   await client.send("Page.navigate", { url: `http://127.0.0.1:${port}/index.html` });
@@ -166,7 +205,9 @@ try {
       scripts: [...document.scripts].map((script) => script.src.split('/').pop())
     })`);
     assert(page.title && page.dir === "rtl" && page.form, "Index page or RTL did not load");
-    assert(page.scripts.includes("app-ui.js") && page.scripts.includes("notifications.js") && page.scripts.includes("script.js"), "Broken index imports");
+    assert(page.scripts.includes("app-ui.js") && page.scripts.includes("shared.js") && page.scripts.includes("notifications.js") && page.scripts.includes("script.js"), "Broken index imports");
+    const sharedStatus = await fetch(`http://127.0.0.1:${port}/shared.js`).then((response) => response.status);
+    assert(sharedStatus === 200, "shared.js did not load with HTTP 200");
   });
 
   await test("wizard navigation and calendar buttons", async () => {
@@ -266,14 +307,24 @@ try {
     await wait(100);
     const modal = await client.evaluate(`({
       open: !authModal.classList.contains('is-hidden'),
-      firstName: customerLoginForm.elements.firstName.value,
-      lastName: customerLoginForm.elements.lastName.value,
-      phone: customerLoginForm.elements.phone.value
+      chooser: customerChooserPanel.classList.contains('is-active')
     })`);
-    assert(modal.open && modal.firstName === "אורי" && modal.lastName === "דהאן" && modal.phone === "0501234567", "Customer login modal did not preserve draft");
-    await client.evaluate(`customerLoginForm.elements.password.value = 'test1234'; customerLoginForm.requestSubmit()`);
+    assert(modal.open && modal.chooser, "Customer account chooser did not open");
+    await client.evaluate("showCustomerSignupPanel()");
+    const signupPrefill = await client.evaluate(`({
+      firstName: customerSignupForm.elements.firstName.value,
+      lastName: customerSignupForm.elements.lastName.value,
+      phone: customerSignupForm.elements.phone.value
+    })`);
+    assert(signupPrefill.firstName === "אורי" && signupPrefill.lastName === "דהאן" && signupPrefill.phone === "0501234567", "Customer signup modal did not preserve draft");
+    await client.evaluate(`
+      customerSignupForm.elements.email.value = 'audit-customer@example.com';
+      customerSignupForm.elements.password.value = 'test1234';
+      customerSignupForm.elements.confirmPassword.value = 'test1234';
+      customerSignupForm.requestSubmit();
+    `);
     await wait(150);
-    assert(await client.evaluate("session.role === 'customer' && !customerBookingsPanel.classList.contains('is-hidden')"), "Customer login failed");
+    assert(await client.evaluate("session.role === 'customer' && !customerBookingsPanel.classList.contains('is-hidden')"), "Customer signup/login failed");
   });
 
   await test("appointment creation and owner notification", async () => {
@@ -579,6 +630,7 @@ try {
           firstName: 'נועה',
           lastName: 'ממתינה',
           phone: waitingPhone,
+          email: 'waitlist-customer@example.com',
           password: 'wait123',
           owner_note: '',
           is_blocked: false,
@@ -627,9 +679,8 @@ try {
     await wait(700);
     await client.evaluate(`(() => {
       openAuthModal('customer');
-      customerLoginForm.elements.firstName.value = 'נועה';
-      customerLoginForm.elements.lastName.value = 'ממתינה';
-      customerLoginForm.elements.phone.value = '0507654321';
+      showCustomerLoginPanel();
+      customerLoginForm.elements.email.value = 'waitlist-customer@example.com';
       customerLoginForm.elements.password.value = 'wait123';
       customerLoginForm.requestSubmit();
     })()`);
@@ -826,7 +877,7 @@ try {
       notificationCenter.render();
       const ownerItemsBefore = state.notifications.filter((item) => item.user_id === 'owner').length;
       notificationCenter.markAllAsRead();
-      const allRead = state.notifications.filter((item) => item.user_id === 'owner').every((item) => item.read);
+      const allRead = state.notifications.filter((item) => item.user_id === 'owner').every((item) => item.is_read);
       const created = notificationCenter.notify({ user_id: 'owner', title: 'בדיקת מחיקה', message: 'התראה זמנית', type: 'general' }, { browser: false });
       notificationCenter.deleteNotification(created.id);
       const deleted = !state.notifications.some((item) => item.id === created.id);

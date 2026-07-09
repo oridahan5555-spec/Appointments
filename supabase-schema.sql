@@ -14,7 +14,10 @@ create table if not exists business (
 );
 
 alter table business
-  add column if not exists features jsonb not null default '{"businessDescription":true,"preparationMessage":true,"socialLink":true,"whatsapp":true,"phone":true,"waze":true,"calendarExport":true,"customerRescheduling":true,"waitingList":true,"attendanceConfirmation":true}'::jsonb;
+  add column if not exists features jsonb not null default '{"businessDescription":true,"preparationMessage":true,"socialLink":true,"whatsapp":true,"phone":true,"waze":true,"calendarExport":true,"customerRescheduling":true,"waitingList":true,"attendanceConfirmation":true}'::jsonb,
+  add column if not exists cover_image text not null default '',
+  add column if not exists profile_image text not null default '',
+  add column if not exists preparation_message text not null default '';
 
 create table if not exists services (
   id uuid primary key default gen_random_uuid(),
@@ -66,15 +69,28 @@ create table if not exists bookings (
 
 alter table bookings add column if not exists service_ids jsonb not null default '[]'::jsonb;
 alter table bookings add column if not exists service_names jsonb not null default '[]'::jsonb;
+alter table bookings add column if not exists customer_auth_user_id uuid references auth.users(id) on delete set null;
+alter table bookings add column if not exists replaces_booking_id uuid references bookings(id) on delete set null;
+alter table bookings add column if not exists hidden_for_customer boolean not null default false;
+alter table bookings add column if not exists arrival_status text not null default '' check (arrival_status in ('', 'waiting', 'arrived', 'finished', 'no_show'));
 alter table bookings add column if not exists attendance_confirmation_requested_at timestamptz;
 alter table bookings add column if not exists attendance_confirmation_status text not null default '' check (attendance_confirmation_status in ('', 'pending', 'confirmed', 'declined'));
 alter table bookings add column if not exists attendance_confirmation_answered_at timestamptz;
+alter table bookings add column if not exists slot_range tsrange generated always as (
+  tsrange(
+    (booking_date + booking_time)::timestamp,
+    (booking_date + booking_time + make_interval(mins => duration_minutes))::timestamp,
+    '[)'
+  )
+) stored;
 
 create table if not exists customers (
   id uuid primary key default gen_random_uuid(),
+  auth_user_id uuid unique references auth.users(id) on delete set null,
   first_name text not null default '',
   last_name text not null default '',
   phone text not null unique,
+  email text,
   password text not null default '',
   owner_note text not null default '',
   is_blocked boolean not null default false,
@@ -85,8 +101,12 @@ create table if not exists customers (
   updated_at timestamptz not null default now()
 );
 
+alter table customers add column if not exists auth_user_id uuid unique references auth.users(id) on delete set null;
+alter table customers add column if not exists email text;
+
 create table if not exists waitlist_entries (
   id uuid primary key default gen_random_uuid(),
+  customer_auth_user_id uuid references auth.users(id) on delete set null,
   customer_phone text not null,
   customer_name text not null default '',
   service_id uuid not null references services(id) on delete cascade,
@@ -98,15 +118,23 @@ create table if not exists waitlist_entries (
   created_at timestamptz not null default now()
 );
 
+alter table waitlist_entries add column if not exists customer_auth_user_id uuid references auth.users(id) on delete set null;
+
 create index if not exists waitlist_entries_booking_date_idx on waitlist_entries (booking_date, status);
 create index if not exists customers_phone_idx on customers (phone);
 
-alter table bookings
-  add constraint bookings_no_overlap
-  exclude using gist (
-    slot_range with &&
-  )
-  where (status in ('pending', 'approved'));
+do $$
+begin
+  alter table bookings
+    add constraint bookings_no_overlap
+    exclude using gist (
+      slot_range with &&
+    )
+    where (status in ('pending', 'approved'));
+exception
+  when duplicate_object then null;
+end;
+$$;
 
 create index if not exists bookings_booking_date_idx on bookings (booking_date);
 create index if not exists bookings_customer_phone_idx on bookings (customer_phone);
@@ -119,11 +147,23 @@ create table if not exists notifications (
   created_at timestamptz not null default now(),
   is_read boolean not null default false,
   user_id text not null,
-  type text not null default 'general'
+  type text not null default 'general',
+  booking_id uuid references bookings(id) on delete cascade,
+  action_url text,
+  metadata jsonb not null default '{}'::jsonb,
+  event_key text
 );
+
+alter table notifications
+  add column if not exists booking_id uuid references bookings(id) on delete cascade,
+  add column if not exists action_url text,
+  add column if not exists metadata jsonb not null default '{}'::jsonb,
+  add column if not exists event_key text;
 
 create index if not exists notifications_user_id_created_at_idx on notifications (user_id, created_at desc);
 create index if not exists notifications_user_id_is_read_idx on notifications (user_id, is_read);
+create index if not exists notifications_booking_id_idx on notifications (booking_id);
+create unique index if not exists notifications_event_key_uidx on notifications (event_key);
 
 create or replace function set_updated_at()
 returns trigger
@@ -165,11 +205,57 @@ before update on customers
 for each row
 execute function set_updated_at();
 
-alter publication supabase_realtime add table bookings;
+do $$
+begin
+  alter publication supabase_realtime add table business;
+exception
+  when duplicate_object then null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table services;
+exception
+  when duplicate_object then null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table working_hours;
+exception
+  when duplicate_object then null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table bookings;
+exception
+  when duplicate_object then null;
+end;
+$$;
 
 do $$
 begin
   alter publication supabase_realtime add table notifications;
+exception
+  when duplicate_object then null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table customers;
+exception
+  when duplicate_object then null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table waitlist_entries;
 exception
   when duplicate_object then null;
 end;
@@ -186,8 +272,12 @@ alter table waitlist_entries enable row level security;
 create table if not exists owner_profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   business_id uuid not null references business(id) on delete cascade,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
+
+alter table owner_profiles
+  add column if not exists updated_at timestamptz not null default now();
 
 alter table owner_profiles enable row level security;
 

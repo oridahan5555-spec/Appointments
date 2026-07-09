@@ -357,33 +357,23 @@
   async function replaceOwnedRows(table, rows) {
     const supabase = ensureClient();
     const normalizedRows = Array.isArray(rows) ? rows : [];
-    const desiredIds = new Set(
-      normalizedRows
-        .map((row) => row?.id)
-        .filter((id) => isUuid(id))
-        .map((id) => String(id))
-    );
-
     if (normalizedRows.length) {
       const { error: upsertError } = await supabase.from(table).upsert(normalizedRows);
       if (upsertError) {
         throw upsertError;
       }
     }
-    const { data: existingRows, error: existingError } = await supabase.from(table).select("id");
-    if (existingError) {
-      throw existingError;
-    }
+  }
 
-    const idsToDelete = (existingRows || [])
-      .map((row) => row?.id)
-      .filter((id) => isUuid(id) && !desiredIds.has(String(id)));
-
-    if (!idsToDelete.length) {
+  async function deleteOwnerRow(table, id) {
+    const supabase = ensureClient();
+    const allowedTables = new Set(["services", "special_hours", "blocked_slots", "waitlist_entries"]);
+    const rowId = String(id || "").trim();
+    if (!allowedTables.has(table) || !isUuid(rowId)) {
       return;
     }
 
-    const { error } = await supabase.from(table).delete().in("id", idsToDelete);
+    const { error } = await supabase.from(table).delete().eq("id", rowId);
     if (error) {
       throw error;
     }
@@ -531,15 +521,39 @@
     });
 
     if (error) {
+      const message = String(error.message || "").toLowerCase();
+      if (
+        message.includes("already registered")
+        || message.includes("already exists")
+        || message.includes("user already")
+        || message.includes("email address is already")
+      ) {
+        throw new Error("כבר קיים חשבון עם האימייל הזה. נסי להתחבר דרך 'כניסה ללקוחה קיימת'.");
+      }
+      if (
+        message.includes("password")
+        && (message.includes("weak") || message.includes("least") || message.includes("short") || message.includes("6"))
+      ) {
+        throw new Error("הסיסמה קצרה מדי. בחרי סיסמה חזקה יותר.");
+      }
+      if (message.includes("database error saving new user")) {
+        throw new Error("כבר קיים חשבון עם האימייל הזה, או שיש תקלה זמנית ביצירת החשבון.");
+      }
       throw error;
     }
 
     if (!data.session) {
-      throw new Error("צריך לכבות Email confirmation ב-Supabase כדי שהלקוחה תיכנס אוטומטית אחרי יצירת החשבון.");
+      return {
+        ...data,
+        needsEmailConfirmation: true
+      };
     }
 
     await claimCustomerAccount({ firstName, lastName, phone, email });
-    return data;
+    return {
+      ...data,
+      needsEmailConfirmation: false
+    };
   }
 
   async function signInCustomer(payload) {
@@ -558,7 +572,12 @@
       throw error;
     }
 
-    await claimCustomerAccount({ email });
+    await claimCustomerAccount({
+      email,
+      phone: data.user?.user_metadata?.phone || "",
+      firstName: data.user?.user_metadata?.first_name || "",
+      lastName: data.user?.user_metadata?.last_name || ""
+    });
     return data;
   }
 
@@ -585,25 +604,6 @@
     return data.user || null;
   }
 
-  async function createOwnerProfile(ownerUserId) {
-    const supabase = ensureClient();
-    const { data: businessRows, error: businessError } = await supabase.from("business").select("id").limit(1);
-    if (businessError) throw businessError;
-    const businessId = businessRows?.[0]?.id;
-    if (!businessId) {
-      throw new Error("אין עדיין רשומת עסק ב-Supabase.");
-    }
-
-    const { error } = await supabase.from("owner_profiles").upsert({
-      id: ownerUserId,
-      business_id: businessId
-    }, {
-      onConflict: "id"
-    });
-
-    if (error) throw error;
-  }
-
   async function loadPublicState() {
     const supabase = ensureClient();
     const [businessResponse, servicesResponse, hoursResponse, specialHoursResponse, blockedSlotsResponse, slotsResponse] = await Promise.all([
@@ -611,26 +611,26 @@
       supabase.from("services").select("*").eq("is_active", true).order("display_order", { ascending: true }),
       supabase.from("working_hours").select("*").order("day_of_week", { ascending: true }),
       supabase.from("special_hours").select("*").order("special_date", { ascending: true }),
-      supabase.from("blocked_slots").select("*").order("blocked_date", { ascending: true }).order("blocked_time", { ascending: true }),
+      supabase.rpc("get_public_blocked_slots"),
       supabase.rpc("get_public_booking_slots")
     ]);
 
-    [businessResponse, servicesResponse, hoursResponse, slotsResponse].forEach((response) => {
+    [businessResponse, servicesResponse, hoursResponse, specialHoursResponse, blockedSlotsResponse, slotsResponse].forEach((response) => {
       if (response.error) {
         throw response.error;
       }
     });
 
     if (!businessResponse.data?.id) {
-      throw new Error("לא נמצאה רשומת עסק ב-Supabase.");
+      throw new Error("לא נמצאו נתוני עסק להצגה כרגע.");
     }
 
     return {
       business: mapBusinessFromDb(businessResponse.data),
       services: mapServicesFromDb(servicesResponse.data),
       workingHours: mapWorkingHoursFromDb(hoursResponse.data),
-      specialHours: specialHoursResponse.error ? [] : mapSpecialHoursFromDb(specialHoursResponse.data),
-      blockedSlots: blockedSlotsResponse.error ? [] : mapBlockedSlotsFromDb(blockedSlotsResponse.data),
+      specialHours: mapSpecialHoursFromDb(specialHoursResponse.data),
+      blockedSlots: mapBlockedSlotsFromDb(blockedSlotsResponse.data),
       bookings: (slotsResponse.data || []).map((row) => mapBookingFromDb(row))
     };
   }
@@ -671,17 +671,23 @@
 
   async function loadOwnerState() {
     const supabase = ensureClient();
-    const [publicState, customersResponse, bookingsResponse, notificationsResponse, waitlistResponse, ownerResponse] = await Promise.all([
+    const user = await getCurrentUser();
+    if (!user) {
+      throw new Error("צריך להתחבר לחשבון ניהול לפני טעינת נתוני העסק.");
+    }
+
+    const [publicState, customersResponse, bookingsResponse, notificationsResponse, waitlistResponse, blockedSlotsResponse, ownerResponse] = await Promise.all([
       loadPublicState(),
       supabase.from("customers").select("*").order("created_at", { ascending: true }),
       supabase.from("bookings").select("*").order("booking_date", { ascending: true }).order("booking_time", { ascending: true }),
       supabase.from("notifications").select("*").order("created_at", { ascending: false }),
       supabase.from("waitlist_entries").select("*").order("created_at", { ascending: false }),
-      supabase.from("owner_profiles").select("id").maybeSingle()
+      supabase.from("blocked_slots").select("*").order("blocked_date", { ascending: true }).order("blocked_time", { ascending: true }),
+      supabase.from("owner_profiles").select("id").eq("id", user.id).maybeSingle()
     ]);
 
-    [customersResponse, bookingsResponse, notificationsResponse, waitlistResponse, ownerResponse].forEach((response) => {
-      if (response.error && response !== ownerResponse) {
+    [customersResponse, bookingsResponse, notificationsResponse, waitlistResponse, blockedSlotsResponse, ownerResponse].forEach((response) => {
+      if (response.error) {
         throw response.error;
       }
     });
@@ -694,6 +700,7 @@
       bookings: (bookingsResponse.data || []).map((row) => mapBookingFromDb(row, customersMap.get(normalizePhone(row.customer_phone)))),
       notifications: (notificationsResponse.data || []).map(mapNotificationFromDb),
       waitlistEntries: (waitlistResponse.data || []).map(mapWaitlistFromDb),
+      blockedSlots: mapBlockedSlotsFromDb(blockedSlotsResponse.data || []),
       owner: ownerResponse.data || null
     };
   }
@@ -950,7 +957,6 @@
     registerCustomer,
     signInCustomer,
     updateOwnerCredentials,
-    createOwnerProfile,
     loadPublicState,
     loadCustomerState,
     loadOwnerState,
@@ -968,6 +974,7 @@
     performBookingEmailAction,
     joinWaitlist,
     syncOwnerState,
+    deleteOwnerRow,
     bootstrapOwnerDataFromLocal,
     subscribe,
     onAuthStateChange,

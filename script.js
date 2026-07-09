@@ -241,7 +241,8 @@ function focusCustomerBooking(bookingId) {
 
   uiState.customerBookingsView = getCustomerBookingBucket(booking);
   renderCustomerBookings();
-  const card = myBookingsList.querySelector(`[data-booking-card-id="${booking.id}"]`);
+  const card = Array.from(myBookingsList.querySelectorAll("[data-booking-card-id]"))
+    .find((item) => item.dataset.bookingCardId === booking.id);
   customerBookingsPanel.classList.remove("is-hidden");
   customerBookingsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
   if (card) {
@@ -487,7 +488,22 @@ function initializeCustomerAuthDom() {
     </label>
     <label class="field">
       <span>\u05e1\u05d9\u05e1\u05de\u05d4</span>
-      <input type="password" name="password" required>
+      <div class="password-field-control">
+        <input id="customerLoginPassword" type="password" name="password" required>
+        <button
+          class="password-visibility-button"
+          type="button"
+          data-password-toggle="customerLoginPassword"
+          aria-label="\u05d4\u05e6\u05d2\u05ea \u05e1\u05d9\u05e1\u05de\u05d4"
+          title="\u05d4\u05e6\u05d2\u05ea \u05e1\u05d9\u05e1\u05de\u05d4"
+          aria-pressed="false"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+      </div>
     </label>
     <button class="primary-button" type="submit">\u05db\u05e0\u05d9\u05e1\u05d4</button>
     <button class="ghost-button is-hidden" id="customerEmailConfirmedButton" type="button">\u05db\u05d1\u05e8 \u05d0\u05d9\u05e9\u05e8\u05ea\u05d9 \u05d1\u05de\u05d9\u05d9\u05dc, \u05d4\u05ea\u05d7\u05d1\u05e8\u05d9 \u05e2\u05db\u05e9\u05d9\u05d5</button>
@@ -501,11 +517,41 @@ function initializeCustomerAuthDom() {
     <p class="auth-helper">\u05d4\u05e7\u05dc\u05d9\u05d3\u05d9 \u05e1\u05d9\u05e1\u05de\u05d4 \u05d7\u05d3\u05e9\u05d4 \u05e4\u05e2\u05de\u05d9\u05d9\u05dd, \u05e9\u05de\u05e8\u05d9, \u05d5\u05d0\u05d6 \u05ea\u05d5\u05db\u05dc\u05d9 \u05dc\u05d4\u05d9\u05db\u05e0\u05e1 \u05e9\u05d5\u05d1 \u05dc\u05d7\u05e9\u05d1\u05d5\u05df \u05e9\u05dc\u05da.</p>
     <label class="field">
       <span>\u05e1\u05d9\u05e1\u05de\u05d4 \u05d7\u05d3\u05e9\u05d4</span>
-      <input type="password" name="newPassword" required>
+      <div class="password-field-control">
+        <input id="customerRecoveryNewPassword" type="password" name="newPassword" required>
+        <button
+          class="password-visibility-button"
+          type="button"
+          data-password-toggle="customerRecoveryNewPassword"
+          aria-label="\u05d4\u05e6\u05d2\u05ea \u05e1\u05d9\u05e1\u05de\u05d4"
+          title="\u05d4\u05e6\u05d2\u05ea \u05e1\u05d9\u05e1\u05de\u05d4"
+          aria-pressed="false"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+      </div>
     </label>
     <label class="field">
       <span>\u05d0\u05d9\u05de\u05d5\u05ea \u05e1\u05d9\u05e1\u05de\u05d4</span>
-      <input type="password" name="confirmPassword" required>
+      <div class="password-field-control">
+        <input id="customerRecoveryConfirmPassword" type="password" name="confirmPassword" required>
+        <button
+          class="password-visibility-button"
+          type="button"
+          data-password-toggle="customerRecoveryConfirmPassword"
+          aria-label="\u05d4\u05e6\u05d2\u05ea \u05e1\u05d9\u05e1\u05de\u05d4"
+          title="\u05d4\u05e6\u05d2\u05ea \u05e1\u05d9\u05e1\u05de\u05d4"
+          aria-pressed="false"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+      </div>
     </label>
     <button class="primary-button" type="submit">\u05e9\u05de\u05d5\u05e8 \u05e1\u05d9\u05e1\u05de\u05d4 \u05d7\u05d3\u05e9\u05d4</button>
     <button class="ghost-button" id="cancelCustomerRecoveryButton" type="button">\u05d7\u05d6\u05e8\u05d4 \u05dc\u05db\u05e0\u05d9\u05e1\u05d4</button>
@@ -588,6 +634,7 @@ function getCustomerSignupErrorMessage(error) {
     || message.includes("user already")
     || message.includes("email exists")
     || message.includes("email address is already")
+    || message.includes("database error saving new user")
   ) {
     return {
       text: "כבר קיים חשבון עם האימייל הזה. נסי להתחבר דרך 'כניסה ללקוחה קיימת'.",
@@ -607,80 +654,23 @@ function getCustomerSignupErrorMessage(error) {
     };
   }
 
+  if (
+    message.includes("claim_customer_account")
+    || message.includes("customer_auth")
+    || message.includes("permission denied")
+  ) {
+    return {
+      text: "יש כרגע בעיה זמנית ביצירת החשבון. נסי שוב בעוד רגע, ואם זה חוזר על עצמו תגידי לי ואסדר את החיבור.",
+      variant: "error",
+      needsEmailConfirmation: false
+    };
+  }
+
   return {
     text: "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע.",
     variant: "error",
     needsEmailConfirmation: false
   };
-}
-
-async function handleCustomerSignupSubmit(event) {
-  event.preventDefault();
-  event.stopImmediatePropagation();
-
-  const formData = new FormData(customerSignupForm);
-  const firstName = String(formData.get("firstName") || "").trim();
-  const lastName = String(formData.get("lastName") || "").trim();
-  const phone = String(formData.get("phone") || "").trim();
-  const email = String(formData.get("email") || "").trim().toLowerCase();
-  const password = String(formData.get("password") || "");
-  const confirmPassword = String(formData.get("confirmPassword") || "");
-  const normalizedPhone = normalizePhoneNumber(phone);
-
-  if (!firstName || !lastName || !normalizedPhone || !email || !password || !confirmPassword) {
-    appUi.toast("צריך למלא את כל הפרטים כדי ליצור חשבון.", { variant: "error" });
-    return;
-  }
-
-  if (password !== confirmPassword) {
-    appUi.toast("הסיסמאות לא תואמות.", { variant: "error" });
-    return;
-  }
-
-  if (!supabaseEnabled) {
-    const existing = state.users.find((user) => user.email === email || isSamePhone(user.phone, normalizedPhone));
-    if (existing && existing.email !== email) {
-      appUi.toast("כבר קיים חשבון עם הטלפון הזה.", { variant: "error" });
-      return;
-    }
-
-    const passwordHash = await hashPassword(password);
-    const localUser = existing || {
-      id: `local-customer-${Date.now()}`,
-      owner_note: "",
-      is_blocked: false,
-      blocked_reason: "",
-      blocked_at: "",
-      no_show_count: 0,
-      created_at: new Date().toISOString()
-    };
-
-    Object.assign(localUser, { firstName, lastName, phone: normalizedPhone, email, password: passwordHash });
-    if (!existing) state.users.push(localUser);
-    saveState();
-    finalizeLocalCustomerLogin(localUser);
-    appUi.toast("החשבון נוצר בהצלחה. את מחוברת עכשיו ויכולה לקבוע תור.", { variant: "success" });
-    return;
-  }
-
-  try {
-    await supabaseApi.registerCustomer({ firstName, lastName, phone, email, password });
-    setCustomerEmailConfirmationButtonVisible(false);
-    await finalizeCustomerLogin({
-      fullName: [firstName, lastName].filter(Boolean).join(" ").trim(),
-      phone
-    });
-    appUi.toast("החשבון נוצר בהצלחה. את מחוברת עכשיו ויכולה לקבוע תור.", { variant: "success" });
-    if (isCustomerBlocked(normalizedPhone)) {
-      appUi.toast("התחברת, אבל החשבון חסום כרגע לקביעת תורים חדשים.", { variant: "warning" });
-    }
-  } catch (error) {
-    const feedback = getCustomerSignupErrorMessage(error);
-    if (feedback.needsEmailConfirmation) {
-      prepareCustomerLoginAfterSignup(email);
-    }
-    appUi.toast(feedback.text, { variant: feedback.variant });
-  }
 }
 
 function loadState() {
@@ -781,12 +771,12 @@ function showPublicLoadingState(message = "טוען נתוני עסק...") {
 
   brandName.textContent = message;
   businessName.textContent = message;
-  businessDescription.textContent = "מושך את שם העסק, השירותים והשעות ישירות מ-Supabase.";
+  businessDescription.textContent = "מושך את שם העסק, השירותים והשעות.";
 }
 
 function showPublicSupabaseError(error) {
-  const message = appUi.translateMessage?.(error?.message || "לא הצלחנו לטעון את נתוני העסק מ-Supabase.")
-    || String(error?.message || "לא הצלחנו לטעון את נתוני העסק מ-Supabase.");
+  const message = appUi.translateMessage?.(error?.message || "לא הצלחנו לטעון את נתוני העסק. נסו לרענן בעוד רגע.")
+    || String(error?.message || "לא הצלחנו לטעון את נתוני העסק. נסו לרענן בעוד רגע.");
   const now = Date.now();
   if (message === publicSupabaseErrorMessage && now - publicSupabaseErrorTimestamp < 5000) {
     return;
@@ -880,7 +870,7 @@ async function refreshStateFromSupabase() {
     await syncSessionFromSupabase();
     const publicState = await supabaseApi.loadPublicState();
     if (!publicState?.business?.id) {
-      throw new Error("לא נמצא עסק פעיל ב-Supabase.");
+      throw new Error("לא נמצא עסק פעיל להצגה כרגע.");
     }
 
     mergePublicState(publicState);
@@ -928,7 +918,7 @@ function setupPublicRealtimeSubscriptions() {
   }
 
   clearRealtimeSubscriptions(publicRealtimeCleanups);
-  ["business", "services", "working_hours", "special_hours", "blocked_slots", "bookings"].forEach((table) => {
+  ["business", "services", "working_hours", "special_hours", "bookings"].forEach((table) => {
     publicRealtimeCleanups.push(supabaseApi.subscribe(table, () => {
       schedulePublicRefresh();
     }));
@@ -1541,11 +1531,11 @@ function hideBookingSuccess() {
 function showBookingSuccess(booking) {
   const isChangeRequest = Boolean(booking.replaces_booking_id);
   bookingSuccessSummary.innerHTML = `
-    <div class="summary-row"><span>${booking.service_ids?.length > 1 ? "שירותים" : "שירות"}</span><strong>${booking.service_name}</strong></div>
-    <div class="summary-row"><span>אשת צוות</span><strong>${booking.staff_name}</strong></div>
+    <div class="summary-row"><span>${booking.service_ids?.length > 1 ? "שירותים" : "שירות"}</span><strong>${escapePublicHtml(booking.service_name)}</strong></div>
+    <div class="summary-row"><span>אשת צוות</span><strong>${escapePublicHtml(booking.staff_name)}</strong></div>
     <div class="summary-row"><span>תאריך</span><strong>${formatDisplayDate(booking.booking_date)}</strong></div>
-    <div class="summary-row"><span>שעה</span><strong>${booking.booking_time}</strong></div>
-    <div class="summary-row"><span>משך כולל</span><strong>${booking.duration_minutes} דקות</strong></div>
+    <div class="summary-row"><span>שעה</span><strong>${escapePublicHtml(booking.booking_time)}</strong></div>
+    <div class="summary-row"><span>משך כולל</span><strong>${escapePublicHtml(booking.duration_minutes)} דקות</strong></div>
   `;
   bookingSuccessTitle.textContent = isChangeRequest ? "בקשת שינוי התור נשלחה" : "ההזמנה נשלחה בהצלחה";
   bookingSuccessText.textContent = isChangeRequest
@@ -1615,14 +1605,13 @@ function updateContactLinks() {
 function applyBusinessImages() {
   const coverImage = String(state.business.cover_image || "").trim();
   const profileImage = String(state.business.profile_image || "").trim();
+  const safeCoverImage = cssImageUrl(coverImage);
 
-  businessCoverImage.style.backgroundImage = coverImage
-    ? `linear-gradient(rgba(110, 70, 118, 0.18), rgba(110, 70, 118, 0.18)), url("${coverImage}")`
+  businessCoverImage.style.backgroundImage = safeCoverImage
+    ? `linear-gradient(rgba(110, 70, 118, 0.18), rgba(110, 70, 118, 0.18)), ${safeCoverImage}`
     : "";
 
-  businessAvatar.style.backgroundImage = profileImage
-    ? `url("${profileImage}")`
-    : "";
+  businessAvatar.style.backgroundImage = cssImageUrl(profileImage);
 }
 
 function renderBusiness() {
@@ -1685,12 +1674,12 @@ function renderServices() {
   servicesCategories.innerHTML = Object.entries(groupedServices())
     .map(([category, services]) => `
       <section class="category-block">
-        <h3 class="category-title">${category}</h3>
+        <h3 class="category-title">${escapePublicHtml(category)}</h3>
         <div class="services-grid">
           ${services.map((service) => `
-            <button class="service-card ${selectedIds.includes(service.id) ? "is-selected" : ""}" type="button" data-service-id="${service.id}">
+            <button class="service-card ${selectedIds.includes(service.id) ? "is-selected" : ""}" type="button" data-service-id="${escapePublicHtml(service.id)}">
               <div class="service-card-head">
-                <strong>${service.name}</strong>
+                <strong>${escapePublicHtml(service.name)}</strong>
                 <span class="service-card-check" aria-hidden="true"></span>
               </div>
               <div class="service-card-meta">
@@ -1707,10 +1696,10 @@ function renderServices() {
 function renderStaff() {
   staffCards.innerHTML = state.staff
     .map((staff) => `
-      <button class="staff-card ${staff.id === uiState.selectedStaffId ? "is-selected" : ""}" type="button" data-staff-id="${staff.id}">
-        <div class="staff-avatar" aria-hidden="true">${staff.initials}</div>
-        <strong>${staff.name}</strong>
-        <span>${staff.role}</span>
+      <button class="staff-card ${staff.id === uiState.selectedStaffId ? "is-selected" : ""}" type="button" data-staff-id="${escapePublicHtml(staff.id)}">
+        <div class="staff-avatar" aria-hidden="true">${escapePublicHtml(staff.initials)}</div>
+        <strong>${escapePublicHtml(staff.name)}</strong>
+        <span>${escapePublicHtml(staff.role)}</span>
       </button>
     `)
     .join("");
@@ -1726,11 +1715,11 @@ function renderSelectedSummary() {
   }
 
   selectedSummary.innerHTML = `
-    <div class="selected-summary-row"><span>${serviceBundle.ids.length > 1 ? "שירותים" : "שירות"}</span><strong>${serviceBundle.name}</strong></div>
+    <div class="selected-summary-row"><span>${serviceBundle.ids.length > 1 ? "שירותים" : "שירות"}</span><strong>${escapePublicHtml(serviceBundle.name)}</strong></div>
     <div class="selected-summary-row"><span>כמה שירותים</span><strong>${serviceBundle.ids.length}</strong></div>
     <div class="selected-summary-row"><span>מחיר כולל</span><strong>${formatPrice(serviceBundle.price)}</strong></div>
     <div class="selected-summary-row"><span>משך כולל</span><strong>${formatDurationMinutes(serviceBundle.duration_minutes)}</strong></div>
-    <div class="selected-summary-row"><span>צוות</span><strong>${staff.name}</strong></div>
+    <div class="selected-summary-row"><span>צוות</span><strong>${escapePublicHtml(staff.name)}</strong></div>
     ${uiState.replacementBookingId ? '<div class="selected-summary-row"><span>מצב</span><strong>שינוי תור קיים</strong></div>' : ""}
   `;
 }
@@ -1742,10 +1731,10 @@ function renderBookingSummary() {
   const timeText = uiState.selectedTime || "-";
 
   bookingSummaryCard.innerHTML = `
-    <div class="summary-row"><span>${serviceBundle?.ids.length > 1 ? "שירותים" : "שירות"}</span><strong>${serviceBundle ? serviceBundle.name : "-"}</strong></div>
+    <div class="summary-row"><span>${serviceBundle?.ids.length > 1 ? "שירותים" : "שירות"}</span><strong>${serviceBundle ? escapePublicHtml(serviceBundle.name) : "-"}</strong></div>
     <div class="summary-row"><span>משך כולל</span><strong>${serviceBundle ? formatDurationMinutes(serviceBundle.duration_minutes) : "-"}</strong></div>
     <div class="summary-row"><span>מחיר כולל</span><strong>${serviceBundle ? formatPrice(serviceBundle.price) : "-"}</strong></div>
-    <div class="summary-row"><span>אשת צוות</span><strong>${staff ? staff.name : "-"}</strong></div>
+    <div class="summary-row"><span>אשת צוות</span><strong>${staff ? escapePublicHtml(staff.name) : "-"}</strong></div>
     <div class="summary-row"><span>תאריך</span><strong>${dateText}</strong></div>
     <div class="summary-row"><span>שעה</span><strong>${timeText}</strong></div>
     ${uiState.replacementBookingId ? '<div class="summary-row"><span>סוג פעולה</span><strong>שינוי תור קיים</strong></div>' : ""}
@@ -2227,9 +2216,9 @@ function renderCustomerBookings() {
       const canRespondAttendance = shouldOfferAttendanceConfirmation(booking);
 
       return `
-        <article class="booking-card status-card-${presentation.statusClass}" data-booking-card-id="${booking.id}">
+        <article class="booking-card status-card-${presentation.statusClass}" data-booking-card-id="${escapePublicHtml(booking.id)}">
           <div class="booking-card-head">
-            <strong>${booking.service_name}</strong>
+            <strong>${escapePublicHtml(booking.service_name)}</strong>
             <div class="booking-card-badges">
               <span class="status-pill status-${presentation.statusClass}">${presentation.statusLabel}</span>
               ${booking.status === "approved" && booking.arrival_status ? `<span class="status-pill arrival-pill arrival-${booking.arrival_status}">${formatArrivalStatus(booking.arrival_status)}</span>` : ""}
@@ -2237,13 +2226,13 @@ function renderCustomerBookings() {
           </div>
           <div class="booking-meta">
             <span>${formatDisplayDate(booking.booking_date)}</span>
-            <span>${booking.booking_time}</span>
-            <span>${booking.staff_name}</span>
+            <span>${escapePublicHtml(booking.booking_time)}</span>
+            <span>${escapePublicHtml(booking.staff_name)}</span>
           </div>
           ${booking.status === "approved" && booking.arrival_status ? `<div class="booking-note">מצב הגעה: ${formatArrivalStatus(booking.arrival_status)}</div>` : ""}
           ${attendanceStatusText ? `<div class="booking-note">אישור הגעה: ${attendanceStatusText}</div>` : ""}
-          ${booking.notes ? `<div class="booking-note">הערה: ${booking.notes}</div>` : ""}
-          ${preparationMessage ? `<div class="booking-note">הכנה לתור: ${preparationMessage}</div>` : ""}
+          ${booking.notes ? `<div class="booking-note">הערה: ${escapePublicHtml(booking.notes)}</div>` : ""}
+          ${preparationMessage ? `<div class="booking-note">הכנה לתור: ${escapePublicHtml(preparationMessage)}</div>` : ""}
           ${
             pendingChangeRequest
               ? `<div class="change-request-strip">יש כרגע בקשת שינוי פתוחה לתאריך ${formatDisplayDate(pendingChangeRequest.booking_date)} בשעה ${pendingChangeRequest.booking_time}. התור הישן נשאר שמור עד לאישור.</div>`
@@ -2258,24 +2247,24 @@ function renderCustomerBookings() {
             presentation.bucket === "active"
               ? `
                 <div class="booking-card-actions">
-                  ${canExportCalendar ? `<button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>` : ""}
-                  ${canChangeThisBooking ? `<button class="ghost-button replace-booking-button" type="button" data-booking-id="${booking.id}">שינוי תור</button>` : ""}
-                  ${canRespondAttendance ? `<button class="ghost-button confirm-arrival-button" type="button" data-booking-id="${booking.id}" data-attendance-response="confirmed">אני מגיעה</button>` : ""}
-                  ${canRespondAttendance ? `<button class="ghost-button decline-arrival-button" type="button" data-booking-id="${booking.id}" data-attendance-response="declined">לא אוכל להגיע</button>` : ""}
-                  <button class="danger-button cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול</button>
+                  ${canExportCalendar ? `<button class="ghost-button calendar-choice-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">הוספה ליומן</button>` : ""}
+                  ${canChangeThisBooking ? `<button class="ghost-button replace-booking-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">שינוי תור</button>` : ""}
+                  ${canRespondAttendance ? `<button class="ghost-button confirm-arrival-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}" data-attendance-response="confirmed">אני מגיעה</button>` : ""}
+                  ${canRespondAttendance ? `<button class="ghost-button decline-arrival-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}" data-attendance-response="declined">לא אוכל להגיע</button>` : ""}
+                  <button class="danger-button cancel-booking-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">ביטול</button>
                 </div>
               `
               : presentation.bucket === "completed"
                 ? canExportCalendar
                   ? `
                     <div class="booking-card-actions">
-                      <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
+                      <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">הוספה ליומן</button>
                     </div>
                   `
                   : ""
                 : `
                   <div class="booking-card-actions">
-                    <button class="ghost-button hide-cancelled-booking-button" type="button" data-booking-id="${booking.id}">מחיקה מהרשימה</button>
+                    <button class="ghost-button hide-cancelled-booking-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">מחיקה מהרשימה</button>
                   </div>
                 `
           }
@@ -2331,24 +2320,24 @@ function renderSellerCalendar() {
     .map((booking) => `
       <article class="booking-card status-card-${booking.status}">
         <div class="booking-card-head">
-          <strong>${booking.booking_time}</strong>
+          <strong>${escapePublicHtml(booking.booking_time)}</strong>
           <div class="booking-card-badges">
             <span class="status-pill status-${booking.status}">${formatStatus(booking.status)}</span>
             ${booking.status === "approved" ? `<span class="status-pill arrival-pill arrival-${booking.arrival_status}">${formatArrivalStatus(booking.arrival_status)}</span>` : ""}
           </div>
         </div>
         <div class="booking-meta">
-          <span>${booking.customer_first_name} ${booking.customer_last_name}</span>
-          <span>${booking.service_name}</span>
-          <span>${booking.staff_name}</span>
+          <span>${escapePublicHtml(`${booking.customer_first_name} ${booking.customer_last_name}`)}</span>
+          <span>${escapePublicHtml(booking.service_name)}</span>
+          <span>${escapePublicHtml(booking.staff_name)}</span>
         </div>
-        ${booking.notes ? `<div class="booking-note">הערה: ${booking.notes}</div>` : ""}
+        ${booking.notes ? `<div class="booking-note">הערה: ${escapePublicHtml(booking.notes)}</div>` : ""}
         ${
           booking.status === "approved"
             ? `
               <label class="arrival-status-field">
                 <span>מצב הגעה</span>
-                <select class="arrival-status-select" data-booking-id="${booking.id}">
+                <select class="arrival-status-select" data-booking-id="${escapePublicHtml(booking.id)}">
                   ${buildArrivalStatusOptions(booking.arrival_status)}
                 </select>
               </label>
@@ -2359,8 +2348,8 @@ function renderSellerCalendar() {
           ["pending", "approved"].includes(booking.status)
             ? `
               <div class="booking-card-actions">
-                <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
-                <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול תור</button>
+                <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">הוספה ליומן</button>
+                <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">ביטול תור</button>
               </div>
             `
             : ""
@@ -2381,25 +2370,25 @@ function renderSellerBookings() {
     .map((booking) => `
       <article class="booking-card status-card-${booking.status}">
         <div class="booking-card-head">
-          <strong>${booking.customer_first_name} ${booking.customer_last_name}</strong>
+          <strong>${escapePublicHtml(`${booking.customer_first_name} ${booking.customer_last_name}`)}</strong>
           <div class="booking-card-badges">
             <span class="status-pill status-${booking.status}">${formatStatus(booking.status)}</span>
             ${booking.status === "approved" ? `<span class="status-pill arrival-pill arrival-${booking.arrival_status}">${formatArrivalStatus(booking.arrival_status)}</span>` : ""}
           </div>
         </div>
         <div class="booking-meta">
-          <span>${booking.service_name}</span>
+          <span>${escapePublicHtml(booking.service_name)}</span>
           <span>${formatDisplayDate(booking.booking_date)}</span>
-          <span>${booking.booking_time}</span>
-          <span>${booking.staff_name}</span>
+          <span>${escapePublicHtml(booking.booking_time)}</span>
+          <span>${escapePublicHtml(booking.staff_name)}</span>
         </div>
-        ${booking.notes ? `<div class="booking-note">הערה: ${booking.notes}</div>` : ""}
+        ${booking.notes ? `<div class="booking-note">הערה: ${escapePublicHtml(booking.notes)}</div>` : ""}
         ${
           booking.status === "approved"
             ? `
               <label class="arrival-status-field">
                 <span>מצב הגעה</span>
-                <select class="arrival-status-select" data-booking-id="${booking.id}">
+                <select class="arrival-status-select" data-booking-id="${escapePublicHtml(booking.id)}">
                   ${buildArrivalStatusOptions(booking.arrival_status)}
                 </select>
               </label>
@@ -2410,17 +2399,17 @@ function renderSellerBookings() {
           booking.status === "pending"
             ? `
               <div class="seller-actions">
-                <button class="primary-button approve-booking-button" type="button" data-booking-id="${booking.id}">אישור תור</button>
-                <button class="danger-button reject-booking-button" type="button" data-booking-id="${booking.id}">דחיית תור</button>
-                <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
-                <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול תור</button>
+                <button class="primary-button approve-booking-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">אישור תור</button>
+                <button class="danger-button reject-booking-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">דחיית תור</button>
+                <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">הוספה ליומן</button>
+                <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">ביטול תור</button>
               </div>
             `
             : ["approved"].includes(booking.status)
               ? `
                 <div class="seller-actions">
-                  <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
-                  <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול תור</button>
+                  <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">הוספה ליומן</button>
+                  <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">ביטול תור</button>
                 </div>
               `
               : ""
@@ -2430,7 +2419,7 @@ function renderSellerBookings() {
             ? `
               <div class="undo-strip">
                 <span>התור נדחה. אפשר לבטל את הדחייה במשך כמה שניות.</span>
-                <button class="ghost-button undo-reject-button" type="button" data-booking-id="${booking.id}">ביטול דחייה</button>
+                <button class="ghost-button undo-reject-button" type="button" data-booking-id="${escapePublicHtml(booking.id)}">ביטול דחייה</button>
               </div>
             `
             : ""
@@ -2443,9 +2432,9 @@ function renderSellerBookings() {
 function renderEditors() {
   servicesEditor.innerHTML = state.services
     .map((service) => `
-      <div class="editor-row" data-service-id="${service.id}">
-        <input type="text" value="${service.name}" data-service-field="name">
-        <input type="text" value="${service.category}" data-service-field="category">
+      <div class="editor-row" data-service-id="${escapePublicHtml(service.id)}">
+        <input type="text" value="${escapePublicHtml(service.name)}" data-service-field="name">
+        <input type="text" value="${escapePublicHtml(service.category)}" data-service-field="category">
         <input type="number" min="0" value="${service.price}" data-service-field="price">
         <input type="number" min="5" step="5" value="${service.duration_minutes}" data-service-field="duration_minutes">
         <button class="danger-button remove-service-button" type="button">מחיקה</button>
@@ -2465,8 +2454,8 @@ function renderEditors() {
       ${[...state.workingHours]
         .sort((a, b) => a.day_of_week - b.day_of_week)
         .map((row) => `
-          <div class="editor-row editor-row-hours" data-hour-id="${row.id}">
-            <input type="text" value="${row.day_label}" placeholder="יום" data-hour-field="day_label">
+          <div class="editor-row editor-row-hours" data-hour-id="${escapePublicHtml(row.id)}">
+            <input type="text" value="${escapePublicHtml(row.day_label)}" placeholder="יום" data-hour-field="day_label">
             <input type="time" value="${row.opens_at || ""}" data-hour-field="opens_at">
             <input type="time" value="${row.closes_at || ""}" data-hour-field="closes_at">
             <input type="number" min="5" step="5" value="${row.slot_interval_minutes || 30}" title="מספר הדקות בין תחילת תור אחד לתחילת התור הבא" placeholder="דקות בין תורים" data-hour-field="slot_interval_minutes">
@@ -3029,13 +3018,19 @@ customerSignupForm?.addEventListener("submit", async (event) => {
     };
     Object.assign(localUser, { firstName, lastName, phone: normalizedPhone, email, password: passwordHash });
     if (!existing) state.users.push(localUser);
-    saveState();
     finalizeLocalCustomerLogin(localUser);
+    saveState();
+    appUi.toast("החשבון נוצר בהצלחה. את מחוברת עכשיו ויכולה לקבוע תור.", { variant: "success" });
     return;
   }
 
   try {
-    await supabaseApi.registerCustomer({ firstName, lastName, phone, email, password });
+    const registration = await supabaseApi.registerCustomer({ firstName, lastName, phone, email, password });
+    if (registration?.needsEmailConfirmation) {
+      prepareCustomerLoginAfterSignup(email);
+      appUi.toast("החשבון נוצר בהצלחה. שלחנו לך מייל לאישור החשבון. פתחי את המייל ולחצי על הקישור, ואז תוכלי להתחבר.", { variant: "success" });
+      return;
+    }
     await finalizeCustomerLogin({
       fullName: [firstName, lastName].filter(Boolean).join(" ").trim(),
       phone
@@ -3046,11 +3041,13 @@ customerSignupForm?.addEventListener("submit", async (event) => {
       appUi.toast("התחברת, אבל החשבון חסום כרגע לקביעת תורים חדשים.", { variant: "warning" });
     }
   } catch (error) {
-    appUi.toast(error?.message || "לא הצלחנו ליצור חשבון לקוחה.", { variant: "error" });
+    const feedback = getCustomerSignupErrorMessage(error);
+    if (feedback.needsEmailConfirmation) {
+      prepareCustomerLoginAfterSignup(email);
+    }
+    appUi.toast(feedback.text, { variant: feedback.variant });
   }
 });
-
-customerSignupForm?.addEventListener("submit", handleCustomerSignupSubmit, true);
 
 customerLoginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -3087,18 +3084,7 @@ customerLoginForm.addEventListener("submit", async (event) => {
 
 customerForgotPasswordButton?.addEventListener("click", async () => {
   if (!supabaseEnabled) {
-    const validPassword = username === state.sellerCredentials.username
-      && await verifyStoredPassword(password, state.sellerCredentials.password, (passwordHash) => {
-        state.sellerCredentials.password = passwordHash;
-        saveState();
-      });
-    if (!validPassword) {
-      appUi.toast("פרטי הכניסה לא תקינים.", { variant: "error" });
-      return;
-    }
-    rememberSellerSession();
-    sessionStorage.setItem(SELLER_SESSION_KEY, "1");
-    window.location.href = "owner.html";
+    appUi.toast("איפוס סיסמה במייל זמין רק כשהחיבור ל-Supabase פעיל.", { variant: "warning" });
     return;
   }
 
@@ -3234,8 +3220,10 @@ bookingForm.addEventListener("submit", async (event) => {
     const replacedBookingId = uiState.replacementBookingId;
     const sourceBooking = replacedBookingId ? findBookingById(replacedBookingId) : null;
     const nameParts = parseFullName(fullName);
-    const created = supabaseEnabled
-      ? await supabaseApi.createBooking({
+    let created = null;
+
+    if (supabaseEnabled) {
+      created = await supabaseApi.createBooking({
         serviceId: serviceBundle.primaryServiceId,
         serviceIds: serviceBundle.ids,
         firstName: nameParts.firstName,
@@ -3245,8 +3233,46 @@ bookingForm.addEventListener("submit", async (event) => {
         bookingDate: uiState.selectedDate,
         bookingTime: uiState.selectedTime,
         replacesBookingId: replacedBookingId || null
-      })
-      : null;
+      });
+    } else {
+      const bookingId = window.crypto?.randomUUID ? window.crypto.randomUUID() : `booking-${Date.now()}`;
+      const localBooking = {
+        id: bookingId,
+        service_id: serviceBundle.primaryServiceId,
+        service_ids: serviceBundle.ids,
+        service_names: serviceBundle.names,
+        service_name: serviceBundle.name,
+        customer_first_name: nameParts.firstName,
+        customer_last_name: nameParts.lastName,
+        customer_phone: normalizePhoneNumber(phone),
+        customer_auth_user_id: session.authUserId || "",
+        notes,
+        booking_date: uiState.selectedDate,
+        booking_time: uiState.selectedTime,
+        duration_minutes: serviceBundle.duration_minutes,
+        staff_id: assignedStaff.id,
+        staff_name: assignedStaff.name,
+        status: "pending",
+        customer_confirmed: false,
+        replaces_booking_id: replacedBookingId || null,
+        hidden_for_customer: false,
+        arrival_status: "",
+        attendance_confirmation_requested_at: "",
+        attendance_confirmation_status: "",
+        attendance_confirmation_answered_at: "",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      if (sourceBooking) {
+        notifyOwnerAppointmentRescheduled(localBooking, sourceBooking);
+      } else {
+        notifyOwnerAppointmentBooked(localBooking);
+      }
+
+      state.bookings = normalizeBookings([...state.bookings, localBooking], state.staff, state.services);
+      created = { booking_id: bookingId };
+    }
 
     uiState.bookingDraft = {
       fullName: "",
@@ -3256,7 +3282,11 @@ bookingForm.addEventListener("submit", async (event) => {
     clearReplacementBooking();
     clearPendingBookingDraft();
     saveState();
-    await refreshStateFromSupabase();
+    if (supabaseEnabled) {
+      await refreshStateFromSupabase();
+    } else {
+      rerenderAll();
+    }
     showWizardStep(4);
     const newBooking = state.bookings.find((booking) => booking.id === created?.booking_id) || sourceBooking;
     if (newBooking) {
@@ -3265,7 +3295,7 @@ bookingForm.addEventListener("submit", async (event) => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (error) {
     const isSlotConflict = error?.code === "23P01"
-      || /overlap|conflict|already.*booked|כבר.*נלקח/i.test(String(error?.message || ""));
+      || /time_slot_not_available|overlap|conflict|already.*booked|כבר.*נלקח/i.test(String(error?.message || ""));
 
     if (supabaseEnabled) {
       try {

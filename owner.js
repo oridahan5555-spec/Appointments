@@ -5,7 +5,6 @@ const REJECT_UNDO_WINDOW_MS = 5000;
 const ARRIVAL_STATUS_OPTIONS = ["waiting", "arrived", "finished", "no_show"];
 const supabaseApi = window.AppSupabase || null;
 const supabaseEnabled = Boolean(supabaseApi?.isConfigured?.());
-const OWNER_SUPABASE_BOOTSTRAP_KEY = "booking_app_owner_supabase_bootstrap_v1";
 const BUSINESS_FEATURE_FIELDS = {
   businessDescription: "featureBusinessDescription",
   preparationMessage: "featurePreparationMessage",
@@ -183,7 +182,8 @@ function focusOwnerBooking(bookingId) {
 
   uiState.ownerBookingsFilter = "all";
   renderSellerBookings();
-  const card = sellerBookingsList.querySelector(`[data-booking-card-id="${booking.id}"]`);
+  const card = Array.from(sellerBookingsList.querySelectorAll("[data-booking-card-id]"))
+    .find((item) => item.dataset.bookingCardId === booking.id);
   if (!card) {
     return;
   }
@@ -195,7 +195,8 @@ function focusOwnerBooking(bookingId) {
 
 function runOwnerBookingAction(bookingId, buttonClass) {
   focusOwnerBooking(bookingId);
-  const button = sellerBookingsList.querySelector(`.${buttonClass}[data-booking-id="${bookingId}"]`);
+  const button = Array.from(sellerBookingsList.querySelectorAll(`.${buttonClass}[data-booking-id]`))
+    .find((item) => item.dataset.bookingId === String(bookingId || ""));
   if (!button) {
     throw new Error("הפעולה הזאת כבר בוצעה או שהתור אינו ממתין לאישור.");
   }
@@ -287,11 +288,21 @@ function saveState() {
     })
   );
 
-  if (supabaseEnabled && isOwnerNotificationActive() && !isHydratingOwnerState) {
+  if (supabaseEnabled && ownerLoadedFromSupabase && isOwnerNotificationActive() && !isHydratingOwnerState) {
     void supabaseApi.syncOwnerState(state).catch((error) => {
       showOwnerSupabaseError(error);
     });
   }
+}
+
+function deleteRemoteOwnerRow(table, id) {
+  if (!supabaseEnabled) {
+    return;
+  }
+
+  void supabaseApi.deleteOwnerRow(table, id).catch((error) => {
+    showOwnerSupabaseError(error);
+  });
 }
 
 let ownerRealtimeCleanups = [];
@@ -412,11 +423,13 @@ function setupOwnerRealtimeSubscriptions() {
 }
 
 async function ensureOwnerSupabaseBootstrap() {
-  if (!supabaseEnabled || localStorage.getItem(OWNER_SUPABASE_BOOTSTRAP_KEY) === "1") {
+  if (!supabaseEnabled) {
     return;
   }
 
-  localStorage.setItem(OWNER_SUPABASE_BOOTSTRAP_KEY, "1");
+  if (!(await supabaseApi.isOwnerUser())) {
+    throw new Error("אין לחשבון הזה הרשאת ניהול. צריך לחבר את משתמש ה-Supabase לטבלת owner_profiles.");
+  }
 }
 
 
@@ -844,13 +857,12 @@ function renderHeader() {
 }
 
 function renderBusinessImagePreviews() {
-  ownerCoverPreview.style.backgroundImage = state.business.cover_image
-    ? `linear-gradient(rgba(110, 70, 118, 0.18), rgba(110, 70, 118, 0.18)), url("${state.business.cover_image}")`
+  const safeCoverImage = cssImageUrl(state.business.cover_image);
+  ownerCoverPreview.style.backgroundImage = safeCoverImage
+    ? `linear-gradient(rgba(110, 70, 118, 0.18), rgba(110, 70, 118, 0.18)), ${safeCoverImage}`
     : "";
 
-  ownerAvatarPreview.style.backgroundImage = state.business.profile_image
-    ? `url("${state.business.profile_image}")`
-    : "";
+  ownerAvatarPreview.style.backgroundImage = cssImageUrl(state.business.profile_image);
 }
 
 function renderOwnerStats() {
@@ -1218,8 +1230,8 @@ function renderWaitlist() {
         </div>
         ${entry.notes ? `<div class="booking-note">הערה: ${escapeHtml(entry.notes)}</div>` : ""}
         <div class="booking-card-actions">
-          ${entry.status === "waiting" ? `<button class="ghost-button notify-waitlist-button" type="button" data-waitlist-id="${entry.id}">שליחת הודעה ידנית</button>` : ""}
-          <button class="danger-button remove-waitlist-button" type="button" data-waitlist-id="${entry.id}">הסרה מהרשימה</button>
+          ${entry.status === "waiting" ? `<button class="ghost-button notify-waitlist-button" type="button" data-waitlist-id="${escapeHtml(entry.id)}">שליחת הודעה ידנית</button>` : ""}
+          <button class="danger-button remove-waitlist-button" type="button" data-waitlist-id="${escapeHtml(entry.id)}">הסרה מהרשימה</button>
         </div>
       </article>
     `)
@@ -1280,7 +1292,7 @@ function renderSellerCalendar() {
           <span>${specialDay.is_closed ? "לא ניתן לקבוע תורים ביום הזה" : `${specialDay.opens_at} - ${specialDay.closes_at}`}</span>
           <span>${specialDay.is_closed ? "היום הזה סגור באופן מיוחד" : `כל ${specialDay.slot_interval_minutes} דקות`}</span>
         </div>
-        ${specialDay.note ? `<div class="booking-note">הערה: ${specialDay.note}</div>` : ""}
+        ${specialDay.note ? `<div class="booking-note">הערה: ${escapeHtml(specialDay.note)}</div>` : ""}
       </article>
     `
     : "";
@@ -1296,9 +1308,9 @@ function renderSellerCalendar() {
           <span>${formatDisplayDate(slot.blocked_date)}</span>
           <span>הזמן הזה לא מוצג ללקוחות</span>
         </div>
-        ${slot.note ? `<div class="booking-note">סיבה: ${slot.note}</div>` : ""}
+        ${slot.note ? `<div class="booking-note">סיבה: ${escapeHtml(slot.note)}</div>` : ""}
         <div class="booking-card-actions">
-          <button class="ghost-button unblock-slot-button" type="button" data-blocked-slot-id="${slot.id}">הסרת חסימה</button>
+          <button class="ghost-button unblock-slot-button" type="button" data-blocked-slot-id="${escapeHtml(slot.id)}">הסרת חסימה</button>
         </div>
       </article>
     `)
@@ -1306,27 +1318,27 @@ function renderSellerCalendar() {
 
   const bookingCards = dailyBookings
     .map((booking) => `
-      <article class="booking-card status-card-${booking.status}" data-booking-card-id="${booking.id}">
+      <article class="booking-card status-card-${booking.status}" data-booking-card-id="${escapeHtml(booking.id)}">
         <div class="booking-card-head">
-          <strong>${booking.booking_time}</strong>
+          <strong>${escapeHtml(booking.booking_time)}</strong>
           <div class="booking-card-badges">
             <span class="status-pill status-${booking.status}">${formatStatus(booking.status)}</span>
             ${booking.status === "approved" ? `<span class="status-pill arrival-pill arrival-${booking.arrival_status}">${formatArrivalStatus(booking.arrival_status)}</span>` : ""}
           </div>
         </div>
         <div class="booking-meta">
-          <span>${booking.customer_first_name} ${booking.customer_last_name}</span>
-          <span>${booking.service_name}</span>
-          <span>${booking.staff_name}</span>
+          <span>${escapeHtml(`${booking.customer_first_name} ${booking.customer_last_name}`)}</span>
+          <span>${escapeHtml(booking.service_name)}</span>
+          <span>${escapeHtml(booking.staff_name)}</span>
         </div>
         ${getCustomerNoteMarkup(booking.customer_phone)}
-        ${booking.notes ? `<div class="booking-note">הערה: ${booking.notes}</div>` : ""}
+        ${booking.notes ? `<div class="booking-note">הערה: ${escapeHtml(booking.notes)}</div>` : ""}
         ${
           booking.status === "approved"
             ? `
               <label class="arrival-status-field">
                 <span>מצב הגעה</span>
-                <select class="arrival-status-select" data-booking-id="${booking.id}">
+                <select class="arrival-status-select" data-booking-id="${escapeHtml(booking.id)}">
                   ${buildArrivalStatusOptions(booking.arrival_status)}
                 </select>
               </label>
@@ -1337,8 +1349,8 @@ function renderSellerCalendar() {
           ["pending", "approved"].includes(booking.status)
             ? `
               <div class="booking-card-actions">
-                <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
-                <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול תור</button>
+                <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${escapeHtml(booking.id)}">הוספה ליומן</button>
+                <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${escapeHtml(booking.id)}">ביטול תור</button>
               </div>
             `
             : ""
@@ -1426,29 +1438,29 @@ function renderSellerBookings() {
 
   sellerBookingsList.innerHTML = filteredBookings
     .map((booking) => `
-      <article class="booking-card status-card-${booking.status}" data-booking-card-id="${booking.id}">
+      <article class="booking-card status-card-${booking.status}" data-booking-card-id="${escapeHtml(booking.id)}">
         <div class="booking-card-head">
-          <strong>${booking.customer_first_name} ${booking.customer_last_name}</strong>
+          <strong>${escapeHtml(`${booking.customer_first_name} ${booking.customer_last_name}`)}</strong>
           <div class="booking-card-badges">
             <span class="status-pill status-${booking.status}">${formatStatus(booking.status)}</span>
             ${booking.status === "approved" ? `<span class="status-pill arrival-pill arrival-${booking.arrival_status}">${formatArrivalStatus(booking.arrival_status)}</span>` : ""}
           </div>
         </div>
         <div class="booking-meta">
-          <span>${booking.service_name}</span>
+          <span>${escapeHtml(booking.service_name)}</span>
           <span>${formatDisplayDate(booking.booking_date)}</span>
-          <span>${booking.booking_time}</span>
-          <span>${booking.staff_name}</span>
+          <span>${escapeHtml(booking.booking_time)}</span>
+          <span>${escapeHtml(booking.staff_name)}</span>
         </div>
         ${getCustomerNoteMarkup(booking.customer_phone)}
-        ${booking.notes ? `<div class="booking-note">הערה: ${booking.notes}</div>` : ""}
+        ${booking.notes ? `<div class="booking-note">הערה: ${escapeHtml(booking.notes)}</div>` : ""}
         ${formatAttendanceConfirmationStatus(booking.attendance_confirmation_status) ? `<div class="booking-note">אישור הגעה: ${formatAttendanceConfirmationStatus(booking.attendance_confirmation_status)}</div>` : ""}
         ${
           booking.status === "approved"
             ? `
               <label class="arrival-status-field">
                 <span>מצב הגעה</span>
-                <select class="arrival-status-select" data-booking-id="${booking.id}">
+                <select class="arrival-status-select" data-booking-id="${escapeHtml(booking.id)}">
                   ${buildArrivalStatusOptions(booking.arrival_status)}
                 </select>
               </label>
@@ -1459,18 +1471,18 @@ function renderSellerBookings() {
           booking.status === "pending"
             ? `
               <div class="seller-actions">
-                <button class="primary-button approve-booking-button" type="button" data-booking-id="${booking.id}">אישור תור</button>
-                <button class="danger-button reject-booking-button" type="button" data-booking-id="${booking.id}">דחיית תור</button>
-                <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
-                <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול תור</button>
+                <button class="primary-button approve-booking-button" type="button" data-booking-id="${escapeHtml(booking.id)}">אישור תור</button>
+                <button class="danger-button reject-booking-button" type="button" data-booking-id="${escapeHtml(booking.id)}">דחיית תור</button>
+                <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${escapeHtml(booking.id)}">הוספה ליומן</button>
+                <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${escapeHtml(booking.id)}">ביטול תור</button>
               </div>
             `
             : booking.status === "approved"
               ? `
                 <div class="seller-actions">
-                  <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${booking.id}">הוספה ליומן</button>
-                  ${!booking.attendance_confirmation_requested_at && state.business.features?.attendanceConfirmation !== false ? `<button class="ghost-button send-attendance-confirmation-button" type="button" data-booking-id="${booking.id}">שליחת אישור הגעה</button>` : ""}
-                  <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${booking.id}">ביטול תור</button>
+                  <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${escapeHtml(booking.id)}">הוספה ליומן</button>
+                  ${!booking.attendance_confirmation_requested_at && state.business.features?.attendanceConfirmation !== false ? `<button class="ghost-button send-attendance-confirmation-button" type="button" data-booking-id="${escapeHtml(booking.id)}">שליחת אישור הגעה</button>` : ""}
+                  <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${escapeHtml(booking.id)}">ביטול תור</button>
                 </div>
               `
               : ""
@@ -1480,7 +1492,7 @@ function renderSellerBookings() {
             ? `
               <div class="undo-strip">
                 <span>התור נדחה. אפשר לבטל את הדחייה במשך כמה שניות.</span>
-                <button class="ghost-button undo-reject-button" type="button" data-booking-id="${booking.id}">ביטול דחייה</button>
+                <button class="ghost-button undo-reject-button" type="button" data-booking-id="${escapeHtml(booking.id)}">ביטול דחייה</button>
               </div>
             `
             : ""
@@ -1511,9 +1523,9 @@ function renderEditors() {
 
   servicesEditor.innerHTML = state.services
     .map((service) => `
-      <div class="editor-row" data-service-id="${service.id}">
-        <input type="text" value="${service.name}" data-service-field="name">
-        <input type="text" value="${service.category}" data-service-field="category">
+      <div class="editor-row" data-service-id="${escapeHtml(service.id)}">
+        <input type="text" value="${escapeHtml(service.name)}" data-service-field="name">
+        <input type="text" value="${escapeHtml(service.category)}" data-service-field="category">
         <input type="number" min="0" value="${service.price}" data-service-field="price">
         <input type="number" min="5" step="5" value="${service.duration_minutes}" data-service-field="duration_minutes">
         <button class="danger-button remove-service-button" type="button">מחיקה</button>
@@ -1556,8 +1568,8 @@ function renderEditors() {
     ${[...state.workingHours]
       .sort((a, b) => a.day_of_week - b.day_of_week)
       .map((row) => `
-        <div class="editor-row editor-row-hours ${row.is_closed ? "is-day-closed" : ""}" data-hour-id="${row.id}" data-day-closed="${row.is_closed ? "true" : "false"}">
-          <input type="text" value="${row.day_label}" placeholder="יום" data-hour-field="day_label">
+        <div class="editor-row editor-row-hours ${row.is_closed ? "is-day-closed" : ""}" data-hour-id="${escapeHtml(row.id)}" data-day-closed="${row.is_closed ? "true" : "false"}">
+          <input type="text" value="${escapeHtml(row.day_label)}" placeholder="יום" data-hour-field="day_label">
           <input type="time" value="${row.opens_at || ""}" data-hour-field="opens_at">
           <input type="time" value="${row.closes_at || ""}" data-hour-field="closes_at">
           <input type="number" min="5" step="5" value="${row.slot_interval_minutes || 30}" data-hour-field="slot_interval_minutes">
@@ -1741,10 +1753,10 @@ function renderSpecialHoursManager() {
           <span>${item.is_closed ? "לא ניתן לקבוע תורים ביום הזה" : `${item.opens_at} - ${item.closes_at}`}</span>
           <span>${item.is_closed ? "התאריך הזה חסום ללקוחות" : `כל ${item.slot_interval_minutes} דקות`}</span>
         </div>
-        ${item.note ? `<div class="booking-note">הערה: ${item.note}</div>` : ""}
+        ${item.note ? `<div class="booking-note">הערה: ${escapeHtml(item.note)}</div>` : ""}
         <div class="booking-card-actions">
-          <button class="ghost-button edit-special-hours-button" type="button" data-special-date="${item.special_date}">עריכה</button>
-          <button class="danger-button remove-special-hours-button" type="button" data-special-id="${item.id}">הסרה</button>
+          <button class="ghost-button edit-special-hours-button" type="button" data-special-date="${escapeHtml(item.special_date)}">עריכה</button>
+          <button class="danger-button remove-special-hours-button" type="button" data-special-id="${escapeHtml(item.id)}">הסרה</button>
         </div>
       </article>
     `)
@@ -1805,9 +1817,9 @@ function renderBlockedSlotsManager() {
             <span>${slot.blocked_time}</span>
             <span>${dayLabel}</span>
           </div>
-          ${slot.note ? `<div class="booking-note">סיבה: ${slot.note}</div>` : ""}
+          ${slot.note ? `<div class="booking-note">סיבה: ${escapeHtml(slot.note)}</div>` : ""}
           <div class="booking-card-actions">
-            <button class="ghost-button unblock-slot-button" type="button" data-blocked-slot-id="${slot.id}">הסרת חסימה</button>
+            <button class="ghost-button unblock-slot-button" type="button" data-blocked-slot-id="${escapeHtml(slot.id)}">הסרת חסימה</button>
           </div>
         </article>
       `;
@@ -2055,6 +2067,7 @@ sellerCalendarList.addEventListener("click", async (event) => {
   }
 
   if (target.classList.contains("unblock-slot-button")) {
+    deleteRemoteOwnerRow("blocked_slots", target.dataset.blockedSlotId);
     state.blockedSlots = state.blockedSlots.filter((slot) => slot.id !== target.dataset.blockedSlotId);
     saveState();
     rerenderAll();
@@ -2266,6 +2279,7 @@ specialHoursList.addEventListener("click", (event) => {
   }
 
   state.specialHours = state.specialHours.filter((item) => item.id !== removeButton.dataset.specialId);
+  deleteRemoteOwnerRow("special_hours", removeButton.dataset.specialId);
   saveState();
   rerenderAll();
 });
@@ -2315,6 +2329,7 @@ blockedSlotsList.addEventListener("click", (event) => {
   }
 
   state.blockedSlots = state.blockedSlots.filter((slot) => slot.id !== target.dataset.blockedSlotId);
+  deleteRemoteOwnerRow("blocked_slots", target.dataset.blockedSlotId);
   saveState();
   rerenderAll();
 });
@@ -2376,6 +2391,7 @@ waitlistList?.addEventListener("click", (event) => {
 
   if (removeButton) {
     state.waitlistEntries = state.waitlistEntries.filter((item) => item.id !== entry.id);
+    deleteRemoteOwnerRow("waitlist_entries", entry.id);
     saveState();
     rerenderAll();
     return;
@@ -2571,11 +2587,11 @@ businessForm.addEventListener("change", async (event) => {
     const imageDataUrl = await readFileAsDataUrl(file);
 
     if (target.name === "coverImageFile") {
-      ownerCoverPreview.style.backgroundImage = `linear-gradient(rgba(110, 70, 118, 0.18), rgba(110, 70, 118, 0.18)), url("${imageDataUrl}")`;
+      ownerCoverPreview.style.backgroundImage = `linear-gradient(rgba(110, 70, 118, 0.18), rgba(110, 70, 118, 0.18)), ${cssImageUrl(imageDataUrl)}`;
     }
 
     if (target.name === "profileImageFile") {
-      ownerAvatarPreview.style.backgroundImage = `url("${imageDataUrl}")`;
+      ownerAvatarPreview.style.backgroundImage = cssImageUrl(imageDataUrl);
     }
   } catch (error) {
     appUi.toast("לא הצלחנו לקרוא את קובץ התמונה. נסי לבחור קובץ אחר.", { variant: "error" });
@@ -2631,14 +2647,18 @@ sellerCredentialsForm.addEventListener("submit", async (event) => {
 
   try {
     if (supabaseEnabled && ownerSession.authUserId) {
-      await supabaseApi.updateOwnerCredentials({
-        email: username,
-        password
-      });
+      if (username !== OWNER_LOGIN_NAME) {
+        appUi.toast(`במצב Supabase שם המשתמש לניהול נשאר ${OWNER_LOGIN_NAME}. אפשר לשנות כאן רק סיסמה.`, { variant: "warning" });
+        sellerCredentialsForm.elements.username.value = OWNER_LOGIN_NAME;
+        return;
+      }
+      if (password.trim()) {
+        await supabaseApi.updateOwnerCredentials({ password });
+      }
     } else if (!supabaseEnabled && password) {
       state.sellerCredentials.password = await hashPassword(password);
     }
-    state.sellerCredentials.username = username;
+    state.sellerCredentials.username = supabaseEnabled ? OWNER_LOGIN_NAME : username;
     sellerCredentialsForm.elements.password.value = "";
     saveState();
     rerenderAll();
@@ -2673,6 +2693,7 @@ servicesEditor.addEventListener("click", (event) => {
 
   const serviceId = row.dataset.serviceId;
   state.services = state.services.filter((service) => service.id !== serviceId);
+  deleteRemoteOwnerRow("services", serviceId);
   saveState();
   rerenderAll();
 });

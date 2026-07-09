@@ -1,5 +1,37 @@
 "use strict";
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function sanitizeCssImageUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw || /["'\\\u0000-\u001f\u007f]/.test(raw)) {
+    return "";
+  }
+
+  if (/^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(raw)) {
+    return raw;
+  }
+
+  try {
+    const url = new URL(raw, window.location.origin);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function cssImageUrl(value) {
+  const safeUrl = sanitizeCssImageUrl(value);
+  return safeUrl ? `url("${safeUrl.replace(/"/g, "%22")}")` : "";
+}
+
 async function hashPassword(password) {
   const buffer = await crypto.subtle.digest(
     "SHA-256",
@@ -271,6 +303,13 @@ function normalizeAttendanceConfirmationStatus(value) {
   }
 
   return "";
+}
+
+function normalizeBookingStatus(value) {
+  const normalized = String(value || "").trim();
+  return ["pending", "approved", "rejected", "cancelled"].includes(normalized)
+    ? normalized
+    : "pending";
 }
 
 function normalizeBlockedSlots(blockedSlots) {
@@ -664,11 +703,13 @@ function normalizeBookings(bookings, staff, services) {
 
     return {
       ...booking,
+      id: String(booking.id || `booking-${Date.now()}-${Math.random().toString(16).slice(2)}`),
       service_ids: normalizedServiceIds,
       service_names: normalizedServiceNames,
       service_name: String(booking.service_name || normalizedServiceNames.join(" + ") || service?.name || "").trim(),
       duration_minutes: Number(booking.duration_minutes || service?.duration_minutes || 30),
-      arrival_status: normalizeArrivalStatus(booking.arrival_status, booking.status),
+      status: normalizeBookingStatus(booking.status),
+      arrival_status: normalizeArrivalStatus(booking.arrival_status, normalizeBookingStatus(booking.status)),
       hidden_for_customer: Boolean(booking.hidden_for_customer),
       attendance_confirmation_requested_at: String(booking.attendance_confirmation_requested_at || ""),
       attendance_confirmation_status: normalizeAttendanceConfirmationStatus(booking.attendance_confirmation_status),
