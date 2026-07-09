@@ -418,16 +418,16 @@ function initializeCustomerAuthDom() {
       </div>
       <form id="customerSignupForm" class="auth-panel">
         <h3>\u05db\u05e0\u05d9\u05e1\u05d4 \u05e8\u05d0\u05e9\u05d5\u05e0\u05d4</h3>
-        <p class="auth-helper">\u05de\u05de\u05dc\u05d0\u05d9\u05dd \u05e4\u05e8\u05d8\u05d9\u05dd \u05e4\u05e2\u05dd \u05d0\u05d7\u05ea, \u05d9\u05d5\u05e6\u05e8\u05d9\u05dd \u05d7\u05e9\u05d1\u05d5\u05df, \u05d5\u05e0\u05db\u05e0\u05e1\u05d9\u05dd \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9\u05ea \u05dc\u05d7\u05e9\u05d1\u05d5\u05df \u05d4\u05dc\u05e7\u05d5\u05d7.</p>
-        <label class="field">
+        <p class="auth-helper" data-customer-signup-helper>\u05de\u05de\u05dc\u05d0\u05d9\u05dd \u05e4\u05e8\u05d8\u05d9\u05dd \u05e4\u05e2\u05dd \u05d0\u05d7\u05ea, \u05d9\u05d5\u05e6\u05e8\u05d9\u05dd \u05d7\u05e9\u05d1\u05d5\u05df, \u05d5\u05e0\u05db\u05e0\u05e1\u05d9\u05dd \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9\u05ea \u05dc\u05d7\u05e9\u05d1\u05d5\u05df \u05d4\u05dc\u05e7\u05d5\u05d7.</p>
+        <label class="field" data-signup-profile-field>
           <span>\u05e9\u05dd \u05e4\u05e8\u05d8\u05d9</span>
           <input type="text" name="firstName" required>
         </label>
-        <label class="field">
+        <label class="field" data-signup-profile-field>
           <span>\u05e9\u05dd \u05de\u05e9\u05e4\u05d7\u05d4</span>
           <input type="text" name="lastName" required>
         </label>
-        <label class="field">
+        <label class="field" data-signup-profile-field>
           <span>\u05d8\u05dc\u05e4\u05d5\u05df</span>
           <input type="tel" name="phone" required>
         </label>
@@ -2558,16 +2558,7 @@ function ensureScheduleSelected() {
 function openAuthModal(role) {
   if (role === "customer") {
     savePendingBookingDraft();
-    const draftName = parseFullName(uiState.bookingDraft.fullName);
-    if (customerSignupForm && !customerSignupForm.elements.firstName.value) {
-      customerSignupForm.elements.firstName.value = draftName.firstName;
-    }
-    if (customerSignupForm && !customerSignupForm.elements.lastName.value) {
-      customerSignupForm.elements.lastName.value = draftName.lastName;
-    }
-    if (customerSignupForm && !customerSignupForm.elements.phone.value) {
-      customerSignupForm.elements.phone.value = uiState.bookingDraft.phone;
-    }
+    updateCustomerSignupProfileFields();
   }
 
   authModal.classList.remove("is-hidden");
@@ -2577,6 +2568,38 @@ function openAuthModal(role) {
 function closeAuthModal() {
   authModal.classList.add("is-hidden");
   showCustomerChooserPanel();
+}
+
+function updateCustomerSignupProfileFields() {
+  if (!customerSignupForm) {
+    return;
+  }
+
+  const fullName = String(bookingForm?.elements?.fullName?.value || uiState.bookingDraft.fullName || "").trim();
+  const phone = String(bookingForm?.elements?.phone?.value || uiState.bookingDraft.phone || "").trim();
+  const nameParts = parseFullName(fullName);
+  const hasBookingProfile = Boolean(nameParts.firstName && nameParts.lastName && normalizePhoneNumber(phone));
+  const helper = customerSignupForm.querySelector("[data-customer-signup-helper]");
+
+  if (nameParts.firstName) {
+    customerSignupForm.elements.firstName.value = nameParts.firstName;
+  }
+  if (nameParts.lastName) {
+    customerSignupForm.elements.lastName.value = nameParts.lastName;
+  }
+  if (phone) {
+    customerSignupForm.elements.phone.value = phone;
+  }
+
+  customerSignupForm.querySelectorAll("[data-signup-profile-field]").forEach((field) => {
+    field.classList.toggle("is-hidden", hasBookingProfile);
+  });
+
+  if (helper) {
+    helper.textContent = hasBookingProfile
+      ? "השם והטלפון כבר נלקחו מטופס התור. עכשיו צריך רק אימייל וסיסמה כדי לפתוח חשבון."
+      : "ממלאים פרטים פעם אחת, יוצרים חשבון, ונכנסים אוטומטית לחשבון הלקוח.";
+  }
 }
 
 function showAuthTab(tabName) {
@@ -2607,6 +2630,7 @@ function showCustomerChooserPanel() {
 
 function showCustomerSignupPanel() {
   setCustomerEmailConfirmationButtonVisible(false);
+  updateCustomerSignupProfileFields();
   customerChooserPanel?.classList.remove("is-active");
   customerSignupForm?.classList.add("is-active");
   customerLoginForm?.classList.remove("is-active");
