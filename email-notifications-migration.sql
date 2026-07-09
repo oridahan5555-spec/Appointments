@@ -738,4 +738,144 @@ begin
 end;
 $$;
 
+create or replace function public.create_owner_notification_for_booking(
+  p_booking_id uuid,
+  p_event_type text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_booking public.bookings%rowtype;
+  v_owner_id uuid;
+  v_notification_id uuid;
+  v_service_label text;
+  v_customer_name text;
+  v_event_key text;
+begin
+  begin
+    select * into v_booking from public.bookings where id = p_booking_id;
+    if not found then
+      return null;
+    end if;
+
+    select id into v_owner_id from public.owner_profiles limit 1;
+    if v_owner_id is null then
+      return null;
+    end if;
+
+    select coalesce(
+      nullif(array_to_string(array(select jsonb_array_elements_text(coalesce(v_booking.service_names, '[]'::jsonb))), ' + '), ''),
+      (select s.name from public.services s where s.id = v_booking.service_id),
+      'שירות'
+    ) into v_service_label;
+
+    v_customer_name := coalesce(nullif(trim(concat(v_booking.customer_first_name, ' ', v_booking.customer_last_name)), ''), 'לקוחה');
+    v_event_key := format('owner:%s:%s', p_booking_id, p_event_type);
+
+    insert into public.notifications (
+      title, message, user_id, type, booking_id, action_url, metadata, event_key
+    ) values (
+      case
+        when p_event_type = 'appointment_rejected' then 'תור נדחה'
+        when p_event_type = 'appointment_rescheduled' then 'בקשת שינוי תור'
+        when p_event_type = 'appointment_cancelled' then 'תור בוטל'
+        when p_event_type = 'attendance_confirmed' then 'הלקוחה אישרה הגעה'
+        when p_event_type = 'attendance_declined' then 'הלקוחה לא תגיע'
+        else 'נקבע תור חדש'
+      end,
+      format('%s - %s, %s בשעה %s.', v_customer_name, v_service_label, v_booking.booking_date, to_char(v_booking.booking_time, 'HH24:MI')),
+      v_owner_id::text,
+      p_event_type,
+      p_booking_id,
+      format('owner.html?booking=%s', p_booking_id),
+      jsonb_build_object(
+        'booking_id', p_booking_id,
+        'booking_status', v_booking.status,
+        'booking_date', v_booking.booking_date,
+        'booking_time', to_char(v_booking.booking_time, 'HH24:MI'),
+        'audience', 'owner'
+      ),
+      v_event_key
+    )
+    on conflict (event_key) do nothing
+    returning id into v_notification_id;
+
+    return v_notification_id;
+  exception
+    when others then
+      raise warning 'Could not create owner notification for booking %: %', p_booking_id, sqlerrm;
+      return null;
+  end;
+end;
+$$;
+
+revoke all on function public.create_owner_notification_for_booking(uuid, text) from public, anon, authenticated;
+
+create or replace function public.handle_booking_notification_events()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_payload jsonb;
+  v_owner_id uuid;
+begin
+  begin
+    v_payload := public.booking_email_payload(new.id);
+    select id into v_owner_id from public.owner_profiles limit 1;
+
+    if tg_op = 'INSERT' then
+      perform public.enqueue_email_event(
+        format('customer:%s:booking_created', new.id),
+        'booking_created',
+        'customer',
+        new.customer_auth_user_id,
+        v_payload->>'customer_email',
+        new.id,
+        v_payload
+      );
+
+      perform public.enqueue_email_event(
+        format('owner:%s:%s', new.id, case when new.replaces_booking_id is null then 'appointment_booked' else 'appointment_rescheduled' end),
+        'owner_' || case when new.replaces_booking_id is null then 'appointment_booked' else 'appointment_rescheduled' end,
+        'owner',
+        v_owner_id,
+        null,
+        new.id,
+        v_payload
+      );
+      return new;
+    end if;
+
+    if tg_op = 'UPDATE' and old.status is distinct from new.status then
+      perform public.enqueue_email_event(
+        format('customer:%s:status:%s', new.id, new.status),
+        'booking_' || new.status,
+        'customer',
+        new.customer_auth_user_id,
+        v_payload->>'customer_email',
+        new.id,
+        v_payload
+      );
+    end if;
+  exception
+    when others then
+      raise warning 'Could not enqueue booking email event for booking %: %', new.id, sqlerrm;
+  end;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.handle_booking_notification_events() from public, anon, authenticated;
+
+drop trigger if exists booking_notification_events on public.bookings;
+create trigger booking_notification_events
+after insert or update on public.bookings
+for each row execute function public.handle_booking_notification_events();
+
 commit;
