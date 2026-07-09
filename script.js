@@ -1517,6 +1517,44 @@ function parseFullName(fullName) {
   };
 }
 
+function getBookingSubmitErrorMessage(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+
+  if (message.includes("auth_required") || message.includes("jwt")) {
+    return "החיבור לחשבון פג. התחברי שוב ואז נסי לקבוע את התור.";
+  }
+
+  if (message.includes("customer_profile_required") || message.includes("phone_required_to_create_customer")) {
+    return "החשבון התחבר, אבל לא הצלחנו לקשר אותו לפרטי הלקוחה. בדקי שיש שם וטלפון בטופס ונסי להתחבר שוב.";
+  }
+
+  if (message.includes("customer_blocked")) {
+    return "אי אפשר לקבוע תור מהחשבון הזה. צריך לפנות לבעלת העסק.";
+  }
+
+  if (message.includes("time_slot_blocked")) {
+    return "השעה הזאת חסומה כרגע. בחרי שעה אחרת.";
+  }
+
+  if (message.includes("time_slot_not_available") || message.includes("exclusion_violation") || message.includes("23p01")) {
+    return "השעה הזאת כבר לא זמינה. בחרי שעה אחרת.";
+  }
+
+  if (message.includes("invalid_service_selection")) {
+    return "השירות שנבחר כבר לא זמין. חזרי לבחירת שירות ובחרי מחדש.";
+  }
+
+  if (message.includes("booking_not_found")) {
+    return "התור המקורי כבר לא נמצא. רענני את הדף ונסי שוב.";
+  }
+
+  if (message.includes("permission denied")) {
+    return "יש בעיית הרשאות בשמירת התור. צריך לעדכן את הרשאות Supabase.";
+  }
+
+  return `שגיאה בשמירת התור: ${String(error?.message || "נסי שוב בעוד רגע.")}`;
+}
+
 function hideBookingSuccess() {
   bookingSuccessPanel.classList.add("is-hidden");
   bookingSuccessTitle.textContent = "ההזמנה נשלחה בהצלחה";
@@ -3343,8 +3381,10 @@ bookingForm.addEventListener("submit", async (event) => {
       uiState.selectedTime = "";
       appUi.toast("מצטערים, התור הזה כבר נלקח. אנא בחרי תור אחר.", { variant: "error" });
       goToStep(3);
-    } else {
-      appUi.toast("שגיאה בשמירת התור. נסי שוב.", { variant: "error" });
+    }
+    if (!isSlotConflict) {
+      console.error("Booking submit failed", error);
+      appUi.toast(getBookingSubmitErrorMessage(error), { variant: "error" });
     }
   } finally {
     uiState.isBookingSubmitting = false;
