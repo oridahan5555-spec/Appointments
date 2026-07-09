@@ -412,12 +412,12 @@ function initializeCustomerAuthDom() {
         <h3>\u05d7\u05e9\u05d1\u05d5\u05df \u05dc\u05e7\u05d5\u05d7</h3>
         <p class="auth-helper">\u05d1\u05d7\u05e8\u05d9 \u05d0\u05dd \u05d6\u05d5 \u05d4\u05db\u05e0\u05d9\u05e1\u05d4 \u05d4\u05e8\u05d0\u05e9\u05d5\u05e0\u05d4 \u05e9\u05dc\u05da, \u05d0\u05d5 \u05d0\u05dd \u05db\u05d1\u05e8 \u05d9\u05e9 \u05dc\u05da \u05d7\u05e9\u05d1\u05d5\u05df \u05e7\u05d9\u05d9\u05dd.</p>
         <div class="auth-choice-grid">
-          <button class="primary-button auth-choice-button" id="openCustomerSignupButton" type="button">\u05db\u05e0\u05d9\u05e1\u05d4 \u05e8\u05d0\u05e9\u05d5\u05e0\u05d4</button>
+          <button class="primary-button auth-choice-button" id="openCustomerSignupButton" type="button">\u05d9\u05e6\u05d9\u05e8\u05ea \u05d7\u05e9\u05d1\u05d5\u05df \u05d7\u05d3\u05e9</button>
           <button class="ghost-button auth-choice-button" id="openCustomerExistingLoginButton" type="button">\u05db\u05d1\u05e8 \u05d9\u05e9 \u05dc\u05d9 \u05d7\u05e9\u05d1\u05d5\u05df</button>
         </div>
       </div>
       <form id="customerSignupForm" class="auth-panel">
-        <h3>\u05db\u05e0\u05d9\u05e1\u05d4 \u05e8\u05d0\u05e9\u05d5\u05e0\u05d4</h3>
+        <h3>\u05d9\u05e6\u05d9\u05e8\u05ea \u05d7\u05e9\u05d1\u05d5\u05df \u05dc\u05e7\u05d5\u05d7\u05d4</h3>
         <p class="auth-helper" data-customer-signup-helper>\u05de\u05de\u05dc\u05d0\u05d9\u05dd \u05e4\u05e8\u05d8\u05d9\u05dd \u05e4\u05e2\u05dd \u05d0\u05d7\u05ea, \u05d9\u05d5\u05e6\u05e8\u05d9\u05dd \u05d7\u05e9\u05d1\u05d5\u05df, \u05d5\u05e0\u05db\u05e0\u05e1\u05d9\u05dd \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9\u05ea \u05dc\u05d7\u05e9\u05d1\u05d5\u05df \u05d4\u05dc\u05e7\u05d5\u05d7.</p>
         <label class="field" data-signup-profile-field>
           <span>\u05e9\u05dd \u05e4\u05e8\u05d8\u05d9</span>
@@ -436,7 +436,7 @@ function initializeCustomerAuthDom() {
           <input type="email" name="email" autocomplete="email" required>
         </label>
         <label class="field">
-          <span>\u05e1\u05d9\u05e1\u05de\u05d4</span>
+          <span>\u05d1\u05d7\u05e8\u05d9 \u05e1\u05d9\u05e1\u05de\u05d4 \u05dc\u05d7\u05e9\u05d1\u05d5\u05df</span>
           <div class="password-field-control">
             <input id="customerSignupPassword" type="password" name="password" required>
             <button
@@ -455,7 +455,7 @@ function initializeCustomerAuthDom() {
           </div>
         </label>
         <label class="field">
-          <span>\u05d0\u05d9\u05de\u05d5\u05ea \u05e1\u05d9\u05e1\u05de\u05d4</span>
+          <span>\u05d0\u05d9\u05de\u05d5\u05ea \u05d4\u05e1\u05d9\u05e1\u05de\u05d4</span>
           <div class="password-field-control">
             <input id="customerSignupConfirmPassword" type="password" name="confirmPassword" required>
             <button
@@ -2597,8 +2597,8 @@ function updateCustomerSignupProfileFields() {
 
   if (helper) {
     helper.textContent = hasBookingProfile
-      ? "השם והטלפון כבר נלקחו מטופס התור. עכשיו צריך רק אימייל וסיסמה כדי לפתוח חשבון."
-      : "ממלאים פרטים פעם אחת, יוצרים חשבון, ונכנסים אוטומטית לחשבון הלקוח.";
+      ? "השם והטלפון כבר נלקחו מטופס התור. עכשיו בוחרים אימייל וסיסמה כדי לפתוח חשבון שתוכלי לחזור אליו אחר כך."
+      : "ממלאים פרטים פעם אחת, בוחרים אימייל וסיסמה, ואז אפשר לראות ולנהל את התורים שלך.";
   }
 }
 
