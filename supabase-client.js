@@ -574,9 +574,9 @@
 
     await claimCustomerAccount({
       email,
-      phone: data.user?.user_metadata?.phone || "",
-      firstName: data.user?.user_metadata?.first_name || "",
-      lastName: data.user?.user_metadata?.last_name || ""
+      phone: payload?.phone || data.user?.user_metadata?.phone || "",
+      firstName: payload?.firstName || data.user?.user_metadata?.first_name || "",
+      lastName: payload?.lastName || data.user?.user_metadata?.last_name || ""
     });
     return data;
   }
