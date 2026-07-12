@@ -236,6 +236,10 @@
             <input type="tel" name="phone" required>
           </label>
           <label class="field booking-profile-field">
+            <span>אימייל לקבלת עדכונים (לא חובה)</span>
+            <input type="email" name="email" placeholder="example@gmail.com" autocomplete="email">
+          </label>
+          <label class="field booking-profile-field">
             <span>הערות</span>
             <textarea name="notes" rows="3" placeholder="לא חובה"></textarea>
           </label>
@@ -438,6 +442,7 @@
   <script src="supabase-config.js"></script>
   <script src="supabase-client.js"></script>
   <script src="notifications.js"></script>
+  <script src="email-client.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

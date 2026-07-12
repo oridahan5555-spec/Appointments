@@ -143,6 +143,8 @@ const specialHoursList = document.getElementById("specialHoursList");
 const specialHoursWarning = document.getElementById("specialHoursWarning");
 const blockedSlotsForm = document.getElementById("blockedSlotsForm");
 const blockedSlotsList = document.getElementById("blockedSlotsList");
+const ownerEmailStatus = document.getElementById("ownerEmailStatus");
+const sendTestEmailButton = document.getElementById("sendTestEmailButton");
 const resetBusinessTemplateButton = document.getElementById("resetBusinessTemplateButton");
 
 const notificationCenter = window.AppNotifications?.create({
@@ -171,6 +173,7 @@ const appUi = window.AppUi || {
   toast: (message) => console.warn(message),
   confirm: async () => true
 };
+const appEmail = window.AppEmail;
 
 const OWNER_LOGIN_NAME = String(supabaseApi?.getOwnerLoginName?.() || "admin").trim() || "admin";
 
@@ -289,10 +292,12 @@ function saveState() {
   );
 
   if (supabaseEnabled && ownerLoadedFromSupabase && isOwnerNotificationActive() && !isHydratingOwnerState) {
-    void supabaseApi.syncOwnerState(state).catch((error) => {
+    return supabaseApi.syncOwnerState(state).then(() => true).catch((error) => {
       showOwnerSupabaseError(error);
+      return false;
     });
   }
+  return Promise.resolve(true);
 }
 
 function deleteRemoteOwnerRow(table, id) {
@@ -333,6 +338,42 @@ function showOwnerSupabaseError(error) {
   ownerSupabaseErrorMessage = message;
   ownerSupabaseErrorTimestamp = now;
   appUi.toast(message, { variant: "error" });
+}
+
+function getBookingCustomer(booking) {
+  if (!booking) return null;
+  return state.users.find((customer) =>
+    (booking.customer_auth_user_id && customer.auth_user_id === booking.customer_auth_user_id)
+    || isSamePhone(customer.phone, booking.customer_phone)
+  ) || null;
+}
+
+function getBookingCustomerEmail(booking) {
+  return String(getBookingCustomer(booking)?.email || booking?.customer_email || "").trim().toLowerCase();
+}
+
+async function sendCustomerBookingEmail(type, booking, successMessage) {
+  const email = getBookingCustomerEmail(booking);
+  if (!appEmail || !email || !booking?.id) return { ok: false, skipped: true };
+
+  const payload = appEmail.buildBookingPayload(booking, state.business, { email });
+  const result = await appEmail.sendEmailNotification(type, payload, {
+    to: email,
+    eventKey: `${type}:${booking.id}`
+  });
+  if (result.ok) {
+    if (successMessage) appUi.toast(successMessage, { variant: "success" });
+  } else if (!result.skipped) {
+    appUi.toast("הפעולה נשמרה, אבל שליחת האימייל לא הצליחה.", { variant: "warning" });
+  }
+  return result;
+}
+
+async function refreshOwnerEmailStatus() {
+  if (!ownerEmailStatus || !appEmail) return;
+  const status = await appEmail.getStatus();
+  ownerEmailStatus.textContent = status.configured ? "אימייל מוגדר בשרת" : "אימייל לא מוגדר עדיין";
+  ownerEmailStatus.classList.toggle("status-card-approved", status.configured);
 }
 
 function clearOwnerRealtimeSubscriptions() {
@@ -1482,6 +1523,7 @@ function renderSellerBookings() {
                 <div class="seller-actions">
                   <button class="ghost-button calendar-choice-button" type="button" data-booking-id="${escapeHtml(booking.id)}">הוספה ליומן</button>
                   ${!booking.attendance_confirmation_requested_at && state.business.features?.attendanceConfirmation !== false ? `<button class="ghost-button send-attendance-confirmation-button" type="button" data-booking-id="${escapeHtml(booking.id)}">שליחת אישור הגעה</button>` : ""}
+                  ${getBookingCustomerEmail(booking) ? `<button class="ghost-button send-email-reminder-button" type="button" data-booking-id="${escapeHtml(booking.id)}">שלח תזכורת באימייל</button>` : ""}
                   <button class="danger-button seller-cancel-booking-button" type="button" data-booking-id="${escapeHtml(booking.id)}">ביטול תור</button>
                 </div>
               `
@@ -1507,6 +1549,7 @@ function renderEditors() {
   businessForm.elements.description.value = state.business.description;
   businessForm.elements.address.value = state.business.address;
   businessForm.elements.phone.value = state.business.phone;
+  businessForm.elements.ownerEmail.value = state.business.owner_email || "";
   businessForm.elements.instagramUrl.value = normalizeSocialUrl(state.business.instagram_url);
   businessForm.elements.preparationMessage.value = state.business.preparation_message || "";
   renderThemeColorEditor();
@@ -1852,6 +1895,7 @@ function showOwnerLayout() {
   notificationCenter?.rememberCurrentNotifications();
   notificationCenter?.askAfterOwnerLogin();
   rerenderAll();
+  void refreshOwnerEmailStatus();
 }
 
 function showOwnerLogin() {
@@ -2000,6 +2044,30 @@ ownerLogoutButton.addEventListener("click", async () => {
   window.location.href = "index.html";
 });
 
+sendTestEmailButton?.addEventListener("click", async () => {
+  if (!appEmail) {
+    appUi.toast("האימייל עדיין לא מוגדר בשרת.", { variant: "warning" });
+    return;
+  }
+
+  sendTestEmailButton.disabled = true;
+  try {
+    const result = await appEmail.sendEmailNotification("test_email", {
+      businessName: state.business.name
+    }, { eventKey: `test_email:${Date.now()}` });
+    if (result.ok) {
+      appUi.toast("אימייל ניסיון נשלח בהצלחה.", { variant: "success" });
+    } else if (result.skipped) {
+      appUi.toast("האימייל עדיין לא מוגדר בשרת.", { variant: "warning" });
+    } else {
+      appUi.toast("שליחת אימייל הניסיון לא הצליחה.", { variant: "error" });
+    }
+    await refreshOwnerEmailStatus();
+  } finally {
+    sendTestEmailButton.disabled = false;
+  }
+});
+
 resetBusinessTemplateButton.addEventListener("click", async () => {
   const shouldReset = await appUi.confirm(
     "האיפוס ימחק את כל הנתונים השמורים במערכת, כולל תורים, לקוחות, שירותים ותמונות. להמשיך?",
@@ -2089,7 +2157,8 @@ sellerCalendarList.addEventListener("click", async (event) => {
       try {
         await supabaseApi.requestBookingAttendance(booking.id);
         await refreshOwnerStateFromSupabase({ silent: true });
-        appUi.toast("נשלחה בקשת אישור הגעה ללקוחה.", { variant: "success" });
+        const emailResult = await sendCustomerBookingEmail("attendance_confirmation_customer", booking);
+        appUi.toast(emailResult.ok ? "נשלחה בקשת אישור הגעה ללקוחה וגם באימייל." : "נשלחה בקשת אישור הגעה ללקוחה.", { variant: "success" });
       } catch (error) {
         appUi.toast(error?.message || "לא הצלחנו לשלוח בקשת אישור הגעה.", { variant: "error" });
       }
@@ -2097,6 +2166,14 @@ sellerCalendarList.addEventListener("click", async (event) => {
       saveState();
       rerenderAll();
       appUi.toast("נשלחה בקשת אישור הגעה ללקוחה.", { variant: "success" });
+    }
+    return;
+  }
+
+  if (target.classList.contains("send-email-reminder-button")) {
+    const result = await sendCustomerBookingEmail("reminder_customer", booking, "התזכורת נשלחה באימייל.");
+    if (!result.ok && result.skipped) {
+      appUi.toast("אין כתובת אימייל ללקוחה או שהאימייל עדיין לא מוגדר בשרת.", { variant: "warning" });
     }
     return;
   }
@@ -2118,8 +2195,11 @@ sellerCalendarList.addEventListener("click", async (event) => {
   notifyOwnerAppointmentCancelled(booking, "בעל העסק");
   notifyCustomerAppointmentCancelledByOwner(booking);
   maybePromoteWaitlistForBooking(booking);
-  saveState();
+  const saved = await saveState();
   rerenderAll();
+  if (saved) {
+    await sendCustomerBookingEmail("booking_cancelled_customer", booking);
+  }
 });
 
 sellerCalendarList.addEventListener("change", (event) => {
@@ -2449,7 +2529,8 @@ sellerBookingsList.addEventListener("click", async (event) => {
       try {
         await supabaseApi.requestBookingAttendance(booking.id);
         await refreshOwnerStateFromSupabase({ silent: true });
-        appUi.toast("נשלחה בקשת אישור הגעה ללקוחה.", { variant: "success" });
+        const emailResult = await sendCustomerBookingEmail("attendance_confirmation_customer", booking);
+        appUi.toast(emailResult.ok ? "נשלחה בקשת אישור הגעה ללקוחה וגם באימייל." : "נשלחה בקשת אישור הגעה ללקוחה.", { variant: "success" });
       } catch (error) {
         appUi.toast(error?.message || "לא הצלחנו לשלוח בקשת אישור הגעה.", { variant: "error" });
       }
@@ -2457,6 +2538,14 @@ sellerBookingsList.addEventListener("click", async (event) => {
       saveState();
       rerenderAll();
       appUi.toast("נשלחה בקשת אישור הגעה ללקוחה.", { variant: "success" });
+    }
+    return;
+  }
+
+  if (target.classList.contains("send-email-reminder-button")) {
+    const result = await sendCustomerBookingEmail("reminder_customer", booking, "התזכורת נשלחה באימייל.");
+    if (!result.ok && result.skipped) {
+      appUi.toast("אין כתובת אימייל ללקוחה או שהאימייל עדיין לא מוגדר בשרת.", { variant: "warning" });
     }
     return;
   }
@@ -2476,8 +2565,11 @@ sellerBookingsList.addEventListener("click", async (event) => {
     notifyOwnerAppointmentCancelled(booking, "בעל העסק");
     notifyCustomerAppointmentCancelledByOwner(booking);
     maybePromoteWaitlistForBooking(booking);
-    saveState();
+    const saved = await saveState();
     rerenderAll();
+    if (saved) {
+      await sendCustomerBookingEmail("booking_cancelled_customer", booking);
+    }
     return;
   }
 
@@ -2489,21 +2581,25 @@ sellerBookingsList.addEventListener("click", async (event) => {
     return;
   }
 
+  let customerEmailType = "";
   if (target.classList.contains("approve-booking-button")) {
     clearRejectUndo(false);
     booking.status = "approved";
     booking.arrival_status = normalizeArrivalStatus(booking.arrival_status, "approved");
     const previousBooking = finalizeApprovedChangeRequest(booking);
     if (previousBooking) {
+      customerEmailType = "booking_rescheduled_customer";
       notifyOwnerAppointmentRescheduled(booking, previousBooking);
       notifyCustomerAppointmentChanged(booking, previousBooking);
     } else {
+      customerEmailType = "booking_approved_customer";
       notifyOwnerAppointmentUpdated(booking, "אושר תור");
       notifyCustomerAppointmentUpdated(booking, "התור שלך אושר");
     }
   }
 
   if (target.classList.contains("reject-booking-button")) {
+    customerEmailType = "booking_rejected_customer";
     const previousStatus = booking.status;
     booking.status = "rejected";
     booking.arrival_status = null;
@@ -2512,8 +2608,11 @@ sellerBookingsList.addEventListener("click", async (event) => {
     notifyCustomerAppointmentUpdated(booking, "התור שלך נדחה");
   }
 
-  saveState();
+  const saved = await saveState();
   rerenderAll();
+  if (saved && customerEmailType) {
+    await sendCustomerBookingEmail(customerEmailType, booking, "נשלח עדכון באימייל ללקוחה.");
+  }
 });
 
 sellerBookingsList.addEventListener("change", (event) => {
@@ -2601,6 +2700,12 @@ businessForm.addEventListener("change", async (event) => {
 businessForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
+  const ownerEmail = String(businessForm.elements.ownerEmail?.value || "").trim().toLowerCase();
+  if (!ownerEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) {
+    appUi.toast("הכניסי כתובת אימייל תקינה לקבלת התראות.", { variant: "error" });
+    return;
+  }
+
   let coverImage = state.business.cover_image;
   let profileImage = state.business.profile_image;
 
@@ -2625,6 +2730,7 @@ businessForm.addEventListener("submit", async (event) => {
     description: String(businessForm.elements.description.value).trim(),
     address: String(businessForm.elements.address.value).trim(),
     phone: String(businessForm.elements.phone.value).trim(),
+    owner_email: String(businessForm.elements.ownerEmail.value).trim().toLowerCase(),
     instagram_url: normalizeSocialUrl(businessForm.elements.instagramUrl.value),
     preparation_message: String(businessForm.elements.preparationMessage.value).trim(),
     features: getBusinessFeaturesFromForm(),

@@ -879,3 +879,31 @@ after insert or update on public.bookings
 for each row execute function public.handle_booking_notification_events();
 
 commit;
+
+-- Vercel is the active email sender. Keep the outbox for history, but do not
+-- invoke the legacy Supabase Edge Function worker or its cron schedule.
+do $$
+begin
+  if to_regclass('public.email_outbox') is not null then
+    execute 'drop trigger if exists kick_booking_email_worker on public.email_outbox';
+  end if;
+end;
+$$;
+
+do $$
+declare
+  v_job_id bigint;
+begin
+  if to_regclass('cron.job') is not null then
+    select jobid into v_job_id
+    from cron.job
+    where jobname = 'booking-email-worker-every-5-minutes'
+    limit 1;
+    if v_job_id is not null then
+      perform cron.unschedule(v_job_id);
+    end if;
+  end if;
+exception
+  when undefined_table then null;
+end;
+$$;

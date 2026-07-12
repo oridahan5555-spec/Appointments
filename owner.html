@@ -87,6 +87,7 @@
             <a href="#ownerBlockedSlotsSection">חסימת שעות <span>←</span></a>
             <a href="#ownerBusinessSection">פרטי העסק <span>←</span></a>
             <a href="#ownerAccessSection">כניסה לניהול <span>←</span></a>
+            <a href="#ownerEmailSection">הגדרות אימייל <span>←</span></a>
             <a href="#ownerResetSection">איפוס <span>←</span></a>
           </nav>
         </div>
@@ -198,6 +199,10 @@
             <label class="field">
               <span>טלפון</span>
               <input type="text" name="phone" required>
+            </label>
+            <label class="field">
+              <span>אימייל לקבלת התראות</span>
+              <input type="email" name="ownerEmail" placeholder="example@gmail.com" autocomplete="email" required>
             </label>
             <label class="field" data-feature-editor="socialLink">
               <span>קישור לרשת חברתית</span>
@@ -426,6 +431,14 @@
             <div id="blockedSlotsList" class="cards-list blocked-slots-list"></div>
           </section>
 
+          <section class="admin-card admin-card-wide owner-section-anchor" id="ownerEmailSection">
+            <h3>הגדרות אימייל</h3>
+            <p class="admin-helper" id="ownerEmailStatus">בודקים אם האימייל מוגדר בשרת...</p>
+            <div class="seller-actions">
+              <button class="ghost-button" id="sendTestEmailButton" type="button">שליחת אימייל ניסיון</button>
+            </div>
+          </section>
+
           <section class="admin-card admin-card-wide owner-section-anchor" id="ownerResetSection">
             <h3>איפוס מערכת</h3>
             <p class="admin-helper">
@@ -456,6 +469,7 @@
   <script src="supabase-config.js"></script>
   <script src="supabase-client.js"></script>
   <script src="notifications.js"></script>
+  <script src="email-client.js"></script>
   <script src="owner.js"></script>
 </body>
 </html>

@@ -89,6 +89,7 @@ const uiState = {
   bookingDraft: {
     fullName: "",
     phone: "",
+    email: "",
     notes: ""
   }
 };
@@ -231,6 +232,7 @@ const appUi = window.AppUi || {
   toast: (message) => console.warn(message),
   confirm: async () => true
 };
+const appEmail = window.AppEmail;
 
 function getOwnedCustomerBooking(bookingId) {
   return getCustomerBookingsForSession().find((booking) => booking.id === String(bookingId || "")) || null;
@@ -294,6 +296,7 @@ async function cancelCustomerBookingFromNotification(bookingId) {
     saveState();
     rerenderAll();
   }
+  void sendCancelledBookingEmails(booking);
   appUi.toast("ביטול התור נקלט.", { variant: "success" });
 }
 
@@ -354,9 +357,6 @@ function showEmailBookingDetails(payload) {
 async function handleEmailEntryLinks() {
   const url = new URL(window.location.href);
   const actionResult = url.searchParams.get("emailAction");
-  const emailToken = url.searchParams.get("emailToken");
-  const emailIntent = url.searchParams.get("emailIntent");
-  const emailActionToken = url.searchParams.get("emailActionToken");
   if (actionResult) {
     const messages = {
       confirmed: "ההגעה אושרה בהצלחה.",
@@ -365,33 +365,6 @@ async function handleEmailEntryLinks() {
     };
     appUi.toast(messages[actionResult] || "הפעולה הושלמה.", { variant: actionResult === "error" ? "error" : "success" });
     url.searchParams.delete("emailAction");
-  }
-  if (emailToken) {
-    try {
-      const payload = await supabaseApi.loadBookingFromEmailToken(emailToken);
-      showEmailBookingDetails(payload);
-    } catch (error) {
-      appUi.toast(error?.message || "הקישור לתור אינו תקין או שפג תוקפו.", { variant: "error" });
-    }
-    url.searchParams.delete("emailToken");
-  }
-  if (emailActionToken && ["confirm", "cancel"].includes(emailIntent)) {
-    const isConfirmation = emailIntent === "confirm";
-    const approved = await appUi.confirm(
-      isConfirmation ? "לאשר עכשיו שתגיעי לתור?" : "לבטל עכשיו את התור?",
-      { title: isConfirmation ? "אישור הגעה" : "ביטול תור" }
-    );
-    if (approved) {
-      try {
-        await supabaseApi.performBookingEmailAction(emailActionToken, emailIntent);
-        appUi.toast(isConfirmation ? "ההגעה אושרה בהצלחה." : "ביטול התור נקלט בהצלחה.", { variant: "success" });
-        await refreshStateFromSupabase().catch(() => {});
-      } catch (error) {
-        appUi.toast(error?.message || "לא הצלחנו לבצע את הפעולה.", { variant: "error" });
-      }
-    }
-    url.searchParams.delete("emailIntent");
-    url.searchParams.delete("emailActionToken");
   }
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
@@ -507,6 +480,10 @@ function initializeCustomerAuthDom() {
           </svg>
         </button>
       </div>
+    </label>
+    <label class="field">
+      <span>\u05d8\u05dc\u05e4\u05d5\u05df \u05dc\u05e7\u05d9\u05e9\u05d5\u05e8 \u05d4\u05d7\u05e9\u05d1\u05d5\u05df</span>
+      <input type="tel" name="phone" autocomplete="tel" placeholder="\u05dc\u05d0 \u05d7\u05d5\u05d1\u05d4 \u05d0\u05dd \u05d4\u05d7\u05e9\u05d1\u05d5\u05df \u05db\u05d1\u05e8 \u05de\u05d5\u05db\u05e8">
     </label>
     <button class="primary-button" type="submit">\u05db\u05e0\u05d9\u05e1\u05d4</button>
     <button class="ghost-button is-hidden" id="customerEmailConfirmedButton" type="button">\u05db\u05d1\u05e8 \u05d0\u05d9\u05e9\u05e8\u05ea\u05d9 \u05d1\u05de\u05d9\u05d9\u05dc, \u05d4\u05ea\u05d7\u05d1\u05e8\u05d9 \u05e2\u05db\u05e9\u05d9\u05d5</button>
@@ -965,6 +942,7 @@ function clearRememberedCustomerSession() {
 function buildPendingBookingDraft() {
   const fullName = String(bookingForm?.elements?.fullName?.value || uiState.bookingDraft.fullName || "").trim();
   const phone = String(bookingForm?.elements?.phone?.value || uiState.bookingDraft.phone || "").trim();
+  const email = String(bookingForm?.elements?.email?.value || uiState.bookingDraft.email || "").trim().toLowerCase();
   const notes = String(bookingForm?.elements?.notes?.value || uiState.bookingDraft.notes || "").trim();
   const serviceIds = getSelectedServiceIds();
   const draft = {
@@ -979,6 +957,7 @@ function buildPendingBookingDraft() {
     bookingDraft: {
       fullName,
       phone,
+      email,
       notes
     }
   };
@@ -989,6 +968,7 @@ function buildPendingBookingDraft() {
     || draft.selectedTime
     || fullName
     || phone
+    || email
     || notes
     || draft.wizardStep > 1
   );
@@ -1050,6 +1030,7 @@ function restorePendingBookingDraft() {
   uiState.bookingDraft = {
     fullName: String(draft.bookingDraft?.fullName || ""),
     phone: String(draft.bookingDraft?.phone || ""),
+    email: String(draft.bookingDraft?.email || "").trim().toLowerCase(),
     notes: String(draft.bookingDraft?.notes || "")
   };
 
@@ -1518,6 +1499,57 @@ function parseFullName(fullName) {
     firstName: parts.shift(),
     lastName: parts.join(" ")
   };
+}
+
+function getCurrentCustomerEmail() {
+  return String(getCurrentCustomer()?.email || uiState.bookingDraft.email || "").trim().toLowerCase();
+}
+
+function buildCurrentBookingEmailPayload(booking) {
+  return appEmail?.buildBookingPayload(booking, state.business, {
+    email: getCurrentCustomerEmail(),
+    phone: session.customerPhone
+  }) || null;
+}
+
+async function sendCreatedBookingEmails(booking) {
+  if (!appEmail || !booking?.id) return;
+  const payload = buildCurrentBookingEmailPayload(booking);
+  const customerEmail = payload?.customerEmail || "";
+  const requests = [
+    appEmail.sendEmailNotification("booking_created_owner", payload, {
+      eventKey: `booking_created_owner:${booking.id}`
+    })
+  ];
+  if (customerEmail) {
+    requests.push(appEmail.sendEmailNotification("booking_created_customer", payload, {
+      to: customerEmail,
+      eventKey: `booking_created_customer:${booking.id}`
+    }));
+  }
+
+  const results = await Promise.all(requests);
+  if (customerEmail && results[1]?.ok && !bookingSuccessPanel.classList.contains("is-hidden")) {
+    bookingSuccessText.textContent = `${bookingSuccessText.textContent} שלחנו לך עדכון באימייל.`;
+  }
+}
+
+async function sendCancelledBookingEmails(booking) {
+  if (!appEmail || !booking?.id) return;
+  const payload = buildCurrentBookingEmailPayload(booking);
+  const customerEmail = payload?.customerEmail || "";
+  const requests = [
+    appEmail.sendEmailNotification("booking_cancelled_owner", payload, {
+      eventKey: `booking_cancelled_owner:${booking.id}`
+    })
+  ];
+  if (customerEmail) {
+    requests.push(appEmail.sendEmailNotification("booking_cancelled_customer", payload, {
+      to: customerEmail,
+      eventKey: `booking_cancelled_customer:${booking.id}`
+    }));
+  }
+  await Promise.all(requests);
 }
 
 function getBookingSubmitErrorMessage(error) {
@@ -2162,6 +2194,7 @@ function renderDetailsForm() {
   const draftFields = {
     fullName: uiState.bookingDraft.fullName || accountFullName,
     phone: uiState.bookingDraft.phone || currentCustomer?.phone || "",
+    email: uiState.bookingDraft.email || currentCustomer?.email || "",
     notes: uiState.bookingDraft.notes
   };
 
@@ -2747,6 +2780,7 @@ function finalizeLocalCustomerLogin(user) {
   uiState.customerBookingsView = "active";
   uiState.bookingDraft.fullName = buildCustomerFullName(user.firstName, user.lastName);
   uiState.bookingDraft.phone = user.phone;
+  uiState.bookingDraft.email = user.email || "";
   rememberCustomerSession(user.phone);
   closeAuthModal();
   restorePendingBookingDraft();
@@ -2804,6 +2838,7 @@ function resetBookingSelection() {
   uiState.bookingDraft = {
     fullName: "",
     phone: "",
+    email: "",
     notes: ""
   };
   clearReplacementBooking();
@@ -2833,7 +2868,7 @@ logoutButton.addEventListener("click", async () => {
   session.customerPhone = null;
   session.authUserId = null;
   uiState.customerBookingsView = "active";
-  uiState.bookingDraft = { fullName: "", phone: "", notes: "" };
+  uiState.bookingDraft = { fullName: "", phone: "", email: "", notes: "" };
   bookingForm.reset();
   rerenderAll();
 });
@@ -3072,7 +3107,7 @@ bookingForm.addEventListener("input", (event) => {
     return;
   }
 
-  if (["fullName", "phone", "notes"].includes(field.name)) {
+  if (["fullName", "phone", "email", "notes"].includes(field.name)) {
     uiState.bookingDraft[field.name] = field.value;
   }
 });
@@ -3153,6 +3188,7 @@ customerLoginForm.addEventListener("submit", async (event) => {
   const formData = new FormData(customerLoginForm);
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
+  const loginPhone = String(formData.get("phone") || "").trim();
 
   if (!email || !password) {
     appUi.toast("צריך למלא אימייל וסיסמה.", { variant: "error" });
@@ -3181,7 +3217,7 @@ customerLoginForm.addEventListener("submit", async (event) => {
     await supabaseApi.signInCustomer({
       email,
       password,
-      phone: draftPhone,
+      phone: loginPhone || draftPhone,
       firstName: draftName.firstName,
       lastName: draftName.lastName
     });
@@ -3301,6 +3337,7 @@ bookingForm.addEventListener("submit", async (event) => {
   const serviceBundle = getSelectedServiceBundle();
   const fullName = String(bookingForm.elements.fullName.value).trim();
   const phone = String(bookingForm.elements.phone.value).trim();
+  const email = String(bookingForm.elements.email?.value || uiState.bookingDraft.email || "").trim().toLowerCase();
   const notes = String(bookingForm.elements.notes.value).trim();
 
   if (isCustomerBlocked()) {
@@ -3310,6 +3347,11 @@ bookingForm.addEventListener("submit", async (event) => {
 
   if (!fullName || !phone) {
     appUi.toast("צריך למלא שם מלא וטלפון.", { variant: "error" });
+    return;
+  }
+
+  if (email && !/^\S+@\S+\.\S+$/.test(email)) {
+    appUi.toast("כתובת האימייל אינה תקינה. אפשר להשאיר את השדה ריק או לתקן אותה.", { variant: "error" });
     return;
   }
 
@@ -3327,11 +3369,20 @@ bookingForm.addEventListener("submit", async (event) => {
     }
 
     updateCurrentCustomer(fullName, phone);
+    uiState.bookingDraft.email = email;
 
     const replacedBookingId = uiState.replacementBookingId;
     const sourceBooking = replacedBookingId ? findBookingById(replacedBookingId) : null;
     const nameParts = parseFullName(fullName);
     let created = null;
+
+    if (supabaseEnabled && email && supabaseApi.updateCustomerEmail) {
+      try {
+        await supabaseApi.updateCustomerEmail(email);
+      } catch (emailError) {
+        console.warn("Could not save customer email before booking", emailError);
+      }
+    }
 
     if (supabaseEnabled) {
       created = await supabaseApi.createBooking({
@@ -3340,6 +3391,7 @@ bookingForm.addEventListener("submit", async (event) => {
         firstName: nameParts.firstName,
         lastName: nameParts.lastName,
         phone,
+        email,
         notes,
         bookingDate: uiState.selectedDate,
         bookingTime: uiState.selectedTime,
@@ -3356,6 +3408,7 @@ bookingForm.addEventListener("submit", async (event) => {
         customer_first_name: nameParts.firstName,
         customer_last_name: nameParts.lastName,
         customer_phone: normalizePhoneNumber(phone),
+        customer_email: email,
         customer_auth_user_id: session.authUserId || "",
         notes,
         booking_date: uiState.selectedDate,
@@ -3388,6 +3441,7 @@ bookingForm.addEventListener("submit", async (event) => {
     uiState.bookingDraft = {
       fullName: "",
       phone: "",
+      email: "",
       notes: ""
     };
     clearReplacementBooking();
@@ -3402,6 +3456,7 @@ bookingForm.addEventListener("submit", async (event) => {
     const newBooking = state.bookings.find((booking) => booking.id === created?.booking_id) || sourceBooking;
     if (newBooking) {
       showBookingSuccess(newBooking);
+      void sendCreatedBookingEmails(newBooking);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (error) {
@@ -3864,6 +3919,7 @@ myBookingsList.addEventListener("click", async (event) => {
       saveState();
       rerenderAll();
     }
+    void sendCancelledBookingEmails(booking);
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו לבטל את התור.", { variant: "error" });
   }

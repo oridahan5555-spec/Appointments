@@ -73,6 +73,7 @@
       description: String(business?.description || "").trim(),
       address: String(business?.address || "").trim(),
       phone: String(business?.phone || "").trim(),
+      owner_email: String(business?.owner_email || "").trim().toLowerCase(),
       instagram_url: String(business?.instagram_url || "").trim(),
       cover_image: String(business?.cover_image || "").trim(),
       profile_image: String(business?.profile_image || "").trim(),
@@ -92,6 +93,7 @@
       description: row.description || "",
       address: row.address || "",
       phone: row.phone || "",
+      owner_email: row.owner_email || "",
       instagram_url: row.instagram_url || "",
       cover_image: row.cover_image || "",
       profile_image: row.profile_image || "",
@@ -236,6 +238,7 @@
       customer_last_name: row.customer_last_name || customerRow?.last_name || "",
       customer_phone: row.customer_phone || customerRow?.phone || "",
       customer_auth_user_id: row.customer_auth_user_id || "",
+      customer_email: row.customer_email || customerRow?.email || "",
       notes: row.notes || "",
       booking_date: row.booking_date,
       booking_time: String(row.booking_time || "").slice(0, 5),
@@ -260,6 +263,7 @@
       customer_last_name: String(booking?.customer_last_name || "").trim(),
       customer_phone: normalizePhone(booking?.customer_phone),
       customer_auth_user_id: isUuid(booking?.customer_auth_user_id) ? booking.customer_auth_user_id : undefined,
+      customer_email: String(booking?.customer_email || "").trim().toLowerCase() || null,
       notes: String(booking?.notes || "").trim(),
       booking_date: booking?.booking_date,
       booking_time: booking?.booking_time,
@@ -495,6 +499,19 @@
     return data;
   }
 
+  async function updateCustomerEmail(email) {
+    const supabase = ensureClient();
+    const user = await getCurrentUser();
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    if (!user || !normalizedEmail) return;
+
+    const { error } = await supabase
+      .from("customers")
+      .update({ email: normalizedEmail })
+      .eq("auth_user_id", user.id);
+    if (error) throw error;
+  }
+
   async function registerCustomer(payload) {
     const supabase = ensureClient();
     const email = String(payload?.email || "").trim().toLowerCase();
@@ -572,12 +589,23 @@
       throw error;
     }
 
-    await claimCustomerAccount({
-      email,
-      phone: payload?.phone || data.user?.user_metadata?.phone || "",
-      firstName: payload?.firstName || data.user?.user_metadata?.first_name || "",
-      lastName: payload?.lastName || data.user?.user_metadata?.last_name || ""
-    });
+    try {
+      await claimCustomerAccount({
+        email,
+        phone: payload?.phone || data.user?.user_metadata?.phone || "",
+        firstName: payload?.firstName || data.user?.user_metadata?.first_name || "",
+        lastName: payload?.lastName || data.user?.user_metadata?.last_name || ""
+      });
+    } catch (claimError) {
+      const claimMessage = String(claimError?.message || "");
+      if (claimMessage.includes("PHONE_REQUIRED_TO_CREATE_CUSTOMER") || claimMessage.includes("חסרים פרטי")) {
+        throw new Error("התחברת, אבל צריך גם טלפון כדי לקשר את החשבון לפרטי לקוחה. מלאי טלפון במסך הכניסה ונסי שוב.");
+      }
+      if (claimMessage.includes("CUSTOMER_ALREADY_LINKED") || claimMessage.includes("כבר שייכים")) {
+        throw new Error("הטלפון או האימייל כבר מחוברים לחשבון לקוחה אחר. אם זה החשבון שלך, נסי להתחבר עם האימייל של אותו חשבון או השתמשי בשכחתי סיסמה.");
+      }
+      throw claimError;
+    }
     return data;
   }
 
@@ -786,50 +814,6 @@
     if (error) throw error;
   }
 
-  function getBookingEmailActionUrl(token, action = "view", format = "json") {
-    const baseUrl = String(config.url || "").replace(/\/$/, "");
-    const params = new URLSearchParams();
-    if (token) params.set("token", String(token));
-    if (action) params.set("action", String(action));
-    if (format) {
-      params.set("format", format);
-    }
-    const query = params.toString();
-    return `${baseUrl}/functions/v1/booking-email-action${query ? `?${query}` : ""}`;
-  }
-
-  async function loadBookingFromEmailToken(token) {
-    const response = await fetch(getBookingEmailActionUrl(token, "view", "json"), {
-      headers: { Accept: "application/json" }
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload?.message || "הקישור לתור אינו תקין או שפג תוקפו.");
-    }
-    return payload?.booking || payload;
-  }
-
-  async function performBookingEmailAction(token, action) {
-    if (!["confirm", "cancel"].includes(action)) {
-      throw new Error("פעולת האימייל אינה תקינה.");
-    }
-    const response = await fetch(getBookingEmailActionUrl("", "", ""), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ token: String(token || ""), action })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const message = payload?.error === "used"
-        ? "הפעולה הזאת כבר בוצעה."
-        : payload?.error === "not_allowed"
-          ? "אי אפשר לבצע את הפעולה במצב הנוכחי של התור."
-          : "הקישור אינו תקין או שפג תוקפו.";
-      throw new Error(message);
-    }
-    return payload;
-  }
-
   async function joinWaitlist(payload) {
     const supabase = ensureClient();
     const { error } = await supabase.rpc("join_waitlist_public", {
@@ -954,6 +938,7 @@
     updateOwnerPassword,
     signOut,
     claimCustomerAccount,
+    updateCustomerEmail,
     registerCustomer,
     signInCustomer,
     updateOwnerCredentials,
@@ -969,9 +954,6 @@
     hideMyBooking,
     respondAttendance,
     requestBookingAttendance,
-    getBookingEmailActionUrl,
-    loadBookingFromEmailToken,
-    performBookingEmailAction,
     joinWaitlist,
     syncOwnerState,
     deleteOwnerRow,
