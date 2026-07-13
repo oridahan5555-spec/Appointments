@@ -35,7 +35,7 @@
         <form id="ownerLoginForm" class="booking-form">
           <label class="field">
             <span>שם משתמש</span>
-            <input type="text" name="username" value="admin" autocomplete="username" required>
+            <input type="text" name="username" value="admin" autocomplete="username" readonly required>
           </label>
           <label class="field">
             <span>סיסמה</span>
@@ -51,17 +51,17 @@
       <div class="panel-card">
         <div class="section-head">
           <h2>בחירת סיסמה חדשה</h2>
-          <p>הכניסה דרך קישור האיפוס של Supabase מאפשרת לך לבחור סיסמה חדשה לחשבון הניהול.</p>
+          <p>הגעת דרך הקישור שנשלח לאימייל. בחרי כאן סיסמה חדשה לחשבון הניהול.</p>
         </div>
 
         <form id="ownerRecoveryForm" class="booking-form">
           <label class="field">
             <span>סיסמה חדשה</span>
-            <input type="password" name="newPassword" autocomplete="new-password" required>
+            <input type="password" name="newPassword" minlength="6" autocomplete="new-password" required>
           </label>
           <label class="field">
             <span>אימות סיסמה</span>
-            <input type="password" name="confirmPassword" autocomplete="new-password" required>
+            <input type="password" name="confirmPassword" minlength="6" autocomplete="new-password" required>
           </label>
           <button class="primary-button" type="submit">שמור סיסמה חדשה</button>
         </form>
@@ -311,13 +311,14 @@
           <section class="admin-card owner-section-anchor" id="ownerAccessSection">
             <form id="sellerCredentialsForm">
             <h3>פרטי כניסה לניהול</h3>
+            <p class="admin-helper">שם המשתמש נשאר תמיד admin. כאן אפשר לשנות רק את הסיסמה.</p>
             <label class="field">
               <span>שם משתמש</span>
-              <input type="text" name="username" required>
+              <input type="text" name="username" value="admin" readonly required>
             </label>
             <label class="field">
               <span>סיסמה חדשה</span>
-              <input type="password" name="password" placeholder="אם לא רוצים לשנות, משאירים ריק">
+              <input type="password" name="password" minlength="6" autocomplete="new-password" placeholder="אם לא רוצים לשנות, משאירים ריק">
             </label>
             <button class="primary-button" type="submit">שמירת פרטי ההתחברות</button>
             </form>
@@ -442,7 +443,7 @@
           <section class="admin-card admin-card-wide owner-section-anchor" id="ownerResetSection">
             <h3>איפוס מערכת</h3>
             <p class="admin-helper">
-              כאן אפשר לאפס את כל הנתונים השמורים במערכת, כולל תורים, לקוחות, שירותים, תמונות והגדרות.
+              כאן אפשר לאפס את נתוני העסק, התורים, הלקוחות, השירותים, התמונות וההגדרות. חשבון הניהול, הסיסמה ואימייל ההתראות לא ישתנו.
             </p>
             <button class="danger-button" id="resetBusinessTemplateButton" type="button">איפוס מלא</button>
           </section>

@@ -81,11 +81,7 @@
   }
 
   function createUuid() {
-    if (window.crypto?.randomUUID) {
-      return window.crypto.randomUUID();
-    }
-
-    return `uuid-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    return window.createAppUuid();
   }
 
   function isUuid(value) {
@@ -402,8 +398,11 @@
     const supabase = ensureClient();
     const allowedTables = new Set(["services", "special_hours", "blocked_slots", "waitlist_entries"]);
     const rowId = String(id || "").trim();
-    if (!allowedTables.has(table) || !isUuid(rowId)) {
-      return;
+    if (!allowedTables.has(table)) {
+      throw new Error("הפעולה שניסית לבצע אינה מותרת.");
+    }
+    if (!isUuid(rowId)) {
+      throw new Error("לא ניתן למחוק את הפריט כי המזהה שלו אינו תקין. רענני את הדף ונסי שוב.");
     }
 
     const { error } = await supabase.from(table).delete().eq("id", rowId);
@@ -437,15 +436,32 @@
     const supabase = ensureClient();
     const rawIdentifier = String(credentials?.email || credentials?.username || "").trim();
     const normalizedIdentifier = rawIdentifier.toLowerCase();
-    const email = ownerEmail
-      || (normalizedIdentifier.includes("@") ? normalizedIdentifier : "")
-      || (normalizedIdentifier === ownerLoginName.toLowerCase() ? ownerEmail : "");
     const password = String(credentials?.password || "");
-    if (!email) {
-      throw new Error("חסר ownerEmail ב-supabase-config.js כדי לאפשר התחברות עם admin.");
+
+    if (normalizedIdentifier !== ownerLoginName.toLowerCase()) {
+      throw new Error(`שם המשתמש לניהול חייב להיות ${ownerLoginName}.`);
     }
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    if (!ownerEmail) {
+      throw new Error("כתובת חשבון הניהול עדיין לא הוגדרה במערכת.");
+    }
+    if (!password) {
+      throw new Error("צריך למלא סיסמה.");
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email: ownerEmail, password });
+    if (error) {
+      const message = String(error.message || "").toLowerCase();
+      if (message.includes("invalid login credentials")) {
+        throw new Error("שם המשתמש או הסיסמה אינם נכונים.");
+      }
+      if (message.includes("email not confirmed")) {
+        throw new Error("חשבון הניהול עדיין לא אושר באימייל.");
+      }
+      if (message.includes("rate limit")) {
+        throw new Error("בוצעו יותר מדי ניסיונות בזמן קצר. חכו רגע ונסו שוב.");
+      }
+      throw error;
+    }
     return data;
   }
 
@@ -484,7 +500,7 @@
     return true;
   }
 
-  async function updateOwnerPassword(password) {
+  async function updateCurrentUserPassword(password) {
     const supabase = ensureClient();
     const nextPassword = String(password || "");
     if (!nextPassword.trim()) {
@@ -495,6 +511,8 @@
     if (error) throw error;
     return data.user || null;
   }
+
+  const updateOwnerPassword = updateCurrentUserPassword;
 
   async function claimCustomerAccount(payload = {}) {
     const supabase = ensureClient();
@@ -539,6 +557,12 @@
 
     if (!email || !password || !firstName || !lastName || !phone) {
       throw new Error("צריך למלא את כל הפרטים כדי ליצור חשבון.");
+    }
+    if (phone.replace(/\D/g, "").length < 9 || phone.replace(/\D/g, "").length > 15) {
+      throw new Error("מספר הטלפון אינו תקין. צריך להקליד בין 9 ל-15 ספרות.");
+    }
+    if (password.length < 6) {
+      throw new Error("הסיסמה קצרה מדי. בחרי סיסמה עם לפחות 6 תווים.");
     }
 
     const { data, error } = await supabase.auth.signUp({
@@ -628,25 +652,22 @@
 
   async function updateOwnerCredentials(payload) {
     const supabase = ensureClient();
-    const nextEmail = String(payload?.email || payload?.username || "").trim();
     const nextPassword = String(payload?.password || "");
-    const updatePayload = {};
 
-    if (nextEmail) {
-      updatePayload.email = nextEmail;
-    }
-
-    if (nextPassword.trim()) {
-      updatePayload.password = nextPassword;
-    }
-
-    if (!Object.keys(updatePayload).length) {
+    if (!nextPassword.trim()) {
       return null;
     }
 
-    const { data, error } = await supabase.auth.updateUser(updatePayload);
+    const { data, error } = await supabase.auth.updateUser({ password: nextPassword });
     if (error) throw error;
     return data.user || null;
+  }
+
+  async function resetOwnerBusinessData() {
+    const supabase = ensureClient();
+    const { data, error } = await supabase.rpc("reset_owner_business_data");
+    if (error) throw error;
+    return data;
   }
 
   async function loadPublicState() {
@@ -680,7 +701,7 @@
     };
   }
 
-  async function loadCustomerState() {
+  async function loadCustomerState({ claimMissingProfile = true } = {}) {
     const supabase = ensureClient();
     const user = await getCurrentUser();
     if (!user) {
@@ -704,6 +725,16 @@
         throw response.error;
       }
     });
+
+    if (!customerResponse.data && claimMissingProfile) {
+      await claimCustomerAccount({
+        email: user.email || "",
+        phone: user.user_metadata?.phone || "",
+        firstName: user.user_metadata?.first_name || "",
+        lastName: user.user_metadata?.last_name || ""
+      });
+      return loadCustomerState({ claimMissingProfile: false });
+    }
 
     const customer = customerResponse.data ? mapCustomerRowFromDb(customerResponse.data) : null;
     return {
@@ -861,7 +892,7 @@
     const notificationsPayload = (Array.isArray(snapshot.notifications) ? snapshot.notifications : []).map((item) => mapNotificationToDb({ ...item, id: withUuid(item?.id) })).filter((item) => item.title && item.user_id);
     const waitlistPayload = (Array.isArray(snapshot.waitlistEntries) ? snapshot.waitlistEntries : []).map(mapWaitlistToDb).filter((item) => item.customer_phone && item.service_id && item.booking_date);
 
-    ownerSyncPromise = ownerSyncPromise.then(async () => {
+    ownerSyncPromise = ownerSyncPromise.catch(() => undefined).then(async () => {
       if (!businessPayload.id) {
         const existingBusiness = await getSingleBusinessRow();
         if (existingBusiness?.id) {
@@ -948,6 +979,7 @@
     sendOwnerPasswordReset,
     sendCustomerPasswordReset,
     updateOwnerPassword,
+    updateCurrentUserPassword,
     signOut,
     claimCustomerAccount,
     registerCustomer,
@@ -967,6 +999,7 @@
     requestBookingAttendance,
     joinWaitlist,
     syncOwnerState,
+    resetOwnerBusinessData,
     deleteOwnerRow,
     subscribe,
     onAuthStateChange,

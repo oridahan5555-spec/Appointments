@@ -1,6 +1,5 @@
 ﻿const LOCAL_STORAGE_KEY = "booking_app_local_working_v2";
 const SELLER_SESSION_KEY = "booking_app_seller_session_v1";
-const CUSTOMER_SESSION_KEY = "booking_app_customer_session_v1";
 const REJECT_UNDO_WINDOW_MS = 5000;
 const ARRIVAL_STATUS_OPTIONS = ["waiting", "arrived", "finished", "no_show"];
 const supabaseApi = window.AppSupabase || null;
@@ -240,27 +239,54 @@ function loadState() {
   return defaults;
 }
 
+let lastConfirmedOwnerState = null;
+let ownerSaveRequestId = 0;
+
+function restoreConfirmedOwnerState() {
+  if (!lastConfirmedOwnerState) {
+    return;
+  }
+
+  const snapshot = structuredClone(lastConfirmedOwnerState);
+  Object.keys(state).forEach((key) => delete state[key]);
+  Object.assign(state, snapshot);
+  rerenderAll();
+}
+
 function saveState() {
   localStorage.removeItem(LOCAL_STORAGE_KEY);
   localStorage.removeItem("booking_app_local_working_v1");
 
   if (supabaseEnabled && ownerLoadedFromSupabase && isOwnerNotificationActive() && !isHydratingOwnerState) {
-    return supabaseApi.syncOwnerState(state).then(() => true).catch((error) => {
+    const snapshot = structuredClone(state);
+    const requestId = ++ownerSaveRequestId;
+    return supabaseApi.syncOwnerState(snapshot).then(() => {
+      lastConfirmedOwnerState = snapshot;
+      return true;
+    }).catch((error) => {
       showOwnerSupabaseError(error);
+      if (requestId === ownerSaveRequestId) {
+        restoreConfirmedOwnerState();
+      }
       return false;
     });
   }
   return Promise.resolve(true);
 }
 
-function deleteRemoteOwnerRow(table, id) {
+async function deleteRemoteOwnerRow(table, id) {
   if (!supabaseEnabled) {
-    return;
+    appUi.toast("לא ניתן למחוק בלי חיבור פעיל לשרת.", { variant: "error" });
+    return false;
   }
 
-  void supabaseApi.deleteOwnerRow(table, id).catch((error) => {
+  try {
+    await supabaseApi.deleteOwnerRow(table, id);
+    return true;
+  } catch (error) {
     showOwnerSupabaseError(error);
-  });
+    return false;
+  }
 }
 
 let ownerRealtimeCleanups = [];
@@ -281,8 +307,8 @@ function setOwnerAccessMessage(message = "", isError = false) {
 }
 
 function showOwnerSupabaseError(error) {
-  const message = appUi.translateMessage?.(error?.message || "לא הצלחנו לעדכן נתונים מ-Supabase.")
-    || String(error?.message || "לא הצלחנו לעדכן נתונים מ-Supabase.");
+  const message = appUi.translateMessage?.(error?.message || "לא הצלחנו לעדכן את הנתונים בשרת.")
+    || "לא הצלחנו לעדכן את הנתונים בשרת.";
   const now = Date.now();
   if (message === ownerSupabaseErrorMessage && now - ownerSupabaseErrorTimestamp < 5000) {
     return;
@@ -361,7 +387,7 @@ async function refreshOwnerStateFromSupabase({ silent = false } = {}) {
   try {
     const ownerState = await supabaseApi.loadOwnerState();
     if (!ownerState?.business?.id) {
-      throw new Error("לא נמצא עסק מחובר ב-Supabase עבור חשבון הניהול הזה.");
+      throw new Error("לא נמצא עסק שמחובר לחשבון הניהול הזה.");
     }
 
     if (!ownerState?.owner?.id) {
@@ -380,6 +406,7 @@ async function refreshOwnerStateFromSupabase({ silent = false } = {}) {
     state.notifications = normalizeNotifications(ownerState.notifications || []);
     state.bookings = normalizeBookings(ownerState.bookings || [], state.staff, state.services);
     ownerLoadedFromSupabase = true;
+    lastConfirmedOwnerState = structuredClone(state);
     saveState();
     rerenderAll();
     window.setTimeout(focusOwnerBookingFromUrl, 0);
@@ -429,7 +456,7 @@ async function ensureOwnerSupabaseBootstrap() {
   }
 
   if (!(await supabaseApi.isOwnerUser())) {
-    throw new Error("אין לחשבון הזה הרשאת ניהול. צריך לחבר את משתמש ה-Supabase לטבלת owner_profiles.");
+    throw new Error("החשבון המחובר אינו מורשה לנהל את העסק הזה.");
   }
 }
 
@@ -437,29 +464,7 @@ async function ensureOwnerSupabaseBootstrap() {
 
 
 
-function clearRememberedSessions() {
-  clearRememberedSellerSession();
-  localStorage.removeItem(CUSTOMER_SESSION_KEY);
-}
-
-
-
-function resetStateToDefaultTemplate() {
-  const freshState = structuredClone(DEFAULT_DATA);
-
-  state.business = normalizeBusiness(freshState.business);
-  state.sellerCredentials = { ...freshState.sellerCredentials };
-  state.services = normalizeServices(freshState.services);
-  state.staff = normalizeStaff();
-  state.workingHours = freshState.workingHours.map((item) => ({ ...item }));
-  state.specialHours = [];
-  state.blockedSlots = [];
-  state.waitlistEntries = [];
-  state.bookings = [];
-  state.notifications = [];
-  state.users = [];
-  state.customerNotes = [];
-
+function resetOwnerUiState() {
   uiState.sellerCalendarDate = todayDate();
   uiState.sellerCalendarMonthKey = monthKey(new Date());
   uiState.specialHoursDate = todayDate();
@@ -469,7 +474,6 @@ function resetStateToDefaultTemplate() {
   uiState.calendarChoiceBookingId = null;
 
   clearRejectUndo(false);
-  saveState();
 }
 
 
@@ -628,7 +632,7 @@ function saveCustomerNote(phone, customerName, noteText) {
   }
 
   const notePayload = {
-    id: existingNote?.id || `customer-note-${Date.now()}`,
+    id: existingNote?.id || createAppUuid(),
     customer_phone: normalizedPhone,
     customer_name: String(customerName || "").trim(),
     note: cleanedNote,
@@ -1871,9 +1875,6 @@ function showOwnerLogin() {
   ownerRecoveryGate?.classList.add("is-hidden");
   ownerLayout.classList.add("is-hidden");
   ownerLoginGate.classList.remove("is-hidden");
-  if (!ownerAccessMessage?.textContent) {
-    setOwnerAccessMessage("זה דף הניהול של בעלת העסק. מכאן מנהלים את התורים, השירותים, השעות ופרטי העסק.");
-  }
   if (ownerLoginForm?.elements?.username) {
     ownerLoginForm.elements.username.value = OWNER_LOGIN_NAME;
   }
@@ -1915,7 +1916,7 @@ ownerLoginForm.addEventListener("submit", async (event) => {
   const password = String(formData.get("password"));
 
   if (!supabaseEnabled) {
-    appUi.toast("לא ניתן להיכנס לניהול בלי חיבור מאובטח ל-Supabase Auth.", { variant: "error" });
+    appUi.toast("לא ניתן להיכנס לניהול כי החיבור המאובטח לשרת אינו זמין.", { variant: "error" });
     return;
   }
 
@@ -1950,7 +1951,7 @@ ownerLoginForm.addEventListener("submit", async (event) => {
 ownerForgotPasswordButton?.addEventListener("click", async () => {
   if (ownerForgotPasswordButton.disabled) return;
   if (!supabaseEnabled) {
-    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
+    appUi.toast("החיבור המאובטח לשרת עדיין לא זמין בדף הזה.", { variant: "error" });
     return;
   }
 
@@ -1973,7 +1974,7 @@ ownerRecoveryForm?.addEventListener("submit", async (event) => {
   if (submitButton?.disabled) return;
 
   if (!supabaseEnabled) {
-    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
+    appUi.toast("החיבור המאובטח לשרת עדיין לא זמין בדף הזה.", { variant: "error" });
     return;
   }
 
@@ -1988,6 +1989,11 @@ ownerRecoveryForm?.addEventListener("submit", async (event) => {
 
   if (newPassword !== confirmPassword) {
     appUi.toast("הסיסמאות לא תואמות.", { variant: "error" });
+    return;
+  }
+
+  if (newPassword.length < 6) {
+    appUi.toast("הסיסמה קצרה מדי. בחרי סיסמה עם לפחות 6 תווים.", { variant: "error" });
     return;
   }
 
@@ -2042,22 +2048,42 @@ sendTestEmailButton?.addEventListener("click", async () => {
 });
 
 resetBusinessTemplateButton.addEventListener("click", async () => {
-  const shouldReset = await appUi.confirm(
-    "האיפוס ימחק את כל הנתונים השמורים במערכת, כולל תורים, לקוחות, שירותים ותמונות. להמשיך?",
-    { title: "איפוס מערכת" }
-  );
+  if (resetBusinessTemplateButton.disabled) return;
+  resetBusinessTemplateButton.disabled = true;
+  try {
+    const shouldReset = await appUi.confirm(
+      "האיפוס ימחק את נתוני העסק, התורים, הלקוחות, השירותים, התמונות וההגדרות. חשבון הניהול, הסיסמה ואימייל ההתראות יישארו ללא שינוי.",
+      { title: "איפוס מלא של העסק", confirmText: "המשך לאזהרה האחרונה", variant: "danger" }
+    );
 
-  if (!shouldReset) {
-    return;
+    if (!shouldReset) {
+      return;
+    }
+
+    const confirmedAgain = await appUi.confirm(
+      "זו אזהרה אחרונה: אי אפשר לשחזר דרך האתר את התורים והלקוחות שיימחקו. לבצע את האיפוס עכשיו?",
+      { title: "אישור אחרון", confirmText: "כן, לבצע איפוס", variant: "danger" }
+    );
+
+    if (!confirmedAgain) {
+      return;
+    }
+
+    if (!supabaseEnabled || !ownerSession.authUserId || !supabaseApi?.resetOwnerBusinessData) {
+      throw new Error("האיפוס המאובטח עדיין לא הוגדר בשרת.");
+    }
+
+    await supabaseApi.resetOwnerBusinessData();
+    resetOwnerUiState();
+    closeCalendarChoice();
+    await refreshOwnerStateFromSupabase();
+    showOwnerLayout();
+    appUi.toast("האיפוס הושלם. שם המשתמש והסיסמה שלך לא השתנו.", { variant: "success", title: "האיפוס הושלם" });
+  } catch (error) {
+    showOwnerSupabaseError(error);
+  } finally {
+    resetBusinessTemplateButton.disabled = false;
   }
-
-  resetStateToDefaultTemplate();
-  closeCalendarChoice();
-  clearRememberedSessions();
-  ownerLoginForm.reset();
-  showOwnerLogin();
-  renderHeader();
-  appUi.toast("האיפוס הושלם. פרטי הכניסה הזמניים הם: admin / 1234", { variant: "success", title: "האיפוס הושלם" });
 });
 
 closeCalendarChoiceModal.addEventListener("click", closeCalendarChoice);
@@ -2108,9 +2134,14 @@ sellerCalendarList.addEventListener("click", async (event) => {
   }
 
   if (target.classList.contains("unblock-slot-button")) {
-    deleteRemoteOwnerRow("blocked_slots", target.dataset.blockedSlotId);
+    target.disabled = true;
+    const deleted = await deleteRemoteOwnerRow("blocked_slots", target.dataset.blockedSlotId);
+    if (!deleted) {
+      target.disabled = false;
+      return;
+    }
     state.blockedSlots = state.blockedSlots.filter((slot) => slot.id !== target.dataset.blockedSlotId);
-    saveState();
+    lastConfirmedOwnerState = structuredClone(state);
     rerenderAll();
     return;
   }
@@ -2175,7 +2206,7 @@ sellerCalendarList.addEventListener("click", async (event) => {
   }
 });
 
-sellerCalendarList.addEventListener("change", (event) => {
+sellerCalendarList.addEventListener("change", async (event) => {
   const target = event.target;
   if (!(target instanceof HTMLSelectElement) || !target.classList.contains("arrival-status-select")) {
     return;
@@ -2191,7 +2222,7 @@ sellerCalendarList.addEventListener("change", (event) => {
   booking.arrival_status = nextArrivalStatus;
   notifyOwnerAppointmentUpdated(booking, `עודכן מצב הגעה ל${formatArrivalStatus(booking.arrival_status)}`);
   notifyCustomerAppointmentUpdated(booking, `מצב ההגעה עודכן ל${formatArrivalStatus(booking.arrival_status)}`);
-  saveState();
+  await saveState();
   rerenderAll();
 });
 
@@ -2254,8 +2285,10 @@ specialHoursForm.elements.specialClosed.addEventListener("change", () => {
   });
 });
 
-specialHoursForm.addEventListener("submit", (event) => {
+specialHoursForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+  if (submitButton?.disabled) return;
 
   const specialDate = String(specialHoursForm.elements.specialDate.value || "").trim();
   const specialOpen = String(specialHoursForm.elements.specialOpen.value || "").trim();
@@ -2293,7 +2326,7 @@ specialHoursForm.addEventListener("submit", (event) => {
   state.specialHours = normalizeSpecialHours([
     ...state.specialHours.filter((item) => item.special_date !== specialDate),
     {
-      id: `special-hours-${Date.now()}`,
+      id: createAppUuid(),
       special_date: specialDate,
       opens_at: specialClosed ? null : specialOpen,
       closes_at: specialClosed ? null : specialClose,
@@ -2307,11 +2340,16 @@ specialHoursForm.addEventListener("submit", (event) => {
   uiState.sellerCalendarDate = specialDate;
   uiState.blockedSlotDate = specialDate;
   uiState.sellerCalendarMonthKey = monthKey(new Date(`${specialDate}T00:00:00`));
-  saveState();
+  if (submitButton) submitButton.disabled = true;
+  const saved = await saveState();
   rerenderAll();
+  if (submitButton) submitButton.disabled = false;
+  if (saved) {
+    appUi.toast("התאריך החריג נשמר.", { variant: "success" });
+  }
 });
 
-specialHoursList.addEventListener("click", (event) => {
+specialHoursList.addEventListener("click", async (event) => {
   const editButton = event.target.closest(".edit-special-hours-button");
   if (editButton) {
     uiState.specialHoursDate = String(editButton.dataset.specialDate || "");
@@ -2331,14 +2369,21 @@ specialHoursList.addEventListener("click", (event) => {
     return;
   }
 
+  removeButton.disabled = true;
+  const deleted = await deleteRemoteOwnerRow("special_hours", removeButton.dataset.specialId);
+  if (!deleted) {
+    removeButton.disabled = false;
+    return;
+  }
   state.specialHours = state.specialHours.filter((item) => item.id !== removeButton.dataset.specialId);
-  deleteRemoteOwnerRow("special_hours", removeButton.dataset.specialId);
-  saveState();
+  lastConfirmedOwnerState = structuredClone(state);
   rerenderAll();
 });
 
-blockedSlotsForm.addEventListener("submit", (event) => {
+blockedSlotsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+  if (submitButton?.disabled) return;
 
   const blockedDate = String(blockedSlotsForm.elements.blockedDate.value || "").trim();
   const blockedTime = String(blockedSlotsForm.elements.blockedTime.value || "").trim();
@@ -2360,7 +2405,7 @@ blockedSlotsForm.addEventListener("submit", (event) => {
   }
 
   state.blockedSlots.push({
-    id: `blocked-slot-${Date.now()}`,
+    id: createAppUuid(),
     blocked_date: blockedDate,
     blocked_time: blockedTime,
     note
@@ -2371,23 +2416,33 @@ blockedSlotsForm.addEventListener("submit", (event) => {
   uiState.sellerCalendarDate = blockedDate;
   uiState.sellerCalendarMonthKey = monthKey(new Date(`${blockedDate}T00:00:00`));
   blockedSlotsForm.reset();
-  saveState();
+  if (submitButton) submitButton.disabled = true;
+  const saved = await saveState();
   rerenderAll();
+  if (submitButton) submitButton.disabled = false;
+  if (saved) {
+    appUi.toast("השעה נחסמה ונשמרה.", { variant: "success" });
+  }
 });
 
-blockedSlotsList.addEventListener("click", (event) => {
+blockedSlotsList.addEventListener("click", async (event) => {
   const target = event.target.closest(".unblock-slot-button");
   if (!target) {
     return;
   }
 
+  target.disabled = true;
+  const deleted = await deleteRemoteOwnerRow("blocked_slots", target.dataset.blockedSlotId);
+  if (!deleted) {
+    target.disabled = false;
+    return;
+  }
   state.blockedSlots = state.blockedSlots.filter((slot) => slot.id !== target.dataset.blockedSlotId);
-  deleteRemoteOwnerRow("blocked_slots", target.dataset.blockedSlotId);
-  saveState();
+  lastConfirmedOwnerState = structuredClone(state);
   rerenderAll();
 });
 
-ownerCustomersList.addEventListener("click", (event) => {
+ownerCustomersList.addEventListener("click", async (event) => {
   const saveButton = event.target.closest(".save-customer-note-button");
   const clearButton = event.target.closest(".clear-customer-note-button");
   const toggleBlockButton = event.target.closest(".toggle-customer-block-button");
@@ -2403,19 +2458,24 @@ ownerCustomersList.addEventListener("click", (event) => {
   const customerName = noteField?.dataset.customerName || "";
 
   if (toggleBlockButton) {
+    toggleBlockButton.disabled = true;
     const isBlocked = toggleCustomerBlocked(customerPhone);
-    saveState();
+    const saved = await saveState();
     rerenderAll();
-    appUi.toast(isBlocked ? "הלקוחה נחסמה לקביעת תורים חדשים." : "החסימה הוסרה מהלקוחה.", {
-      variant: isBlocked ? "warning" : "success"
-    });
+    if (saved) {
+      appUi.toast(isBlocked ? "הלקוחה נחסמה לקביעת תורים חדשים." : "החסימה הוסרה מהלקוחה.", {
+        variant: isBlocked ? "warning" : "success"
+      });
+    }
     return;
   }
 
   if (clearButton) {
+    clearButton.disabled = true;
     saveCustomerNote(customerPhone, customerName, "");
-    saveState();
+    const saved = await saveState();
     rerenderAll();
+    if (saved) appUi.toast("ההערה נמחקה.", { variant: "success" });
     return;
   }
 
@@ -2423,12 +2483,14 @@ ownerCustomersList.addEventListener("click", (event) => {
     return;
   }
 
+  saveButton.disabled = true;
   saveCustomerNote(customerPhone, customerName, noteField.value);
-  saveState();
+  const saved = await saveState();
   rerenderAll();
+  if (saved) appUi.toast("ההערה נשמרה.", { variant: "success" });
 });
 
-waitlistList?.addEventListener("click", (event) => {
+waitlistList?.addEventListener("click", async (event) => {
   const notifyButton = event.target.closest(".notify-waitlist-button");
   const removeButton = event.target.closest(".remove-waitlist-button");
   const button = notifyButton || removeButton;
@@ -2443,9 +2505,14 @@ waitlistList?.addEventListener("click", (event) => {
   }
 
   if (removeButton) {
+    removeButton.disabled = true;
+    const deleted = await deleteRemoteOwnerRow("waitlist_entries", entry.id);
+    if (!deleted) {
+      removeButton.disabled = false;
+      return;
+    }
     state.waitlistEntries = state.waitlistEntries.filter((item) => item.id !== entry.id);
-    deleteRemoteOwnerRow("waitlist_entries", entry.id);
-    saveState();
+    lastConfirmedOwnerState = structuredClone(state);
     rerenderAll();
     return;
   }
@@ -2457,7 +2524,7 @@ waitlistList?.addEventListener("click", (event) => {
     booking_time: "",
     service_name: entry.service_name
   });
-  saveState();
+  await saveState();
   rerenderAll();
 });
 
@@ -2548,7 +2615,7 @@ sellerBookingsList.addEventListener("click", async (event) => {
 
   if (target.classList.contains("undo-reject-button")) {
     booking.status = uiState.rejectUndoPreviousStatus || "pending";
-    saveState();
+    await saveState();
     clearRejectUndo(false);
     rerenderAll();
     return;
@@ -2588,7 +2655,7 @@ sellerBookingsList.addEventListener("click", async (event) => {
   }
 });
 
-sellerBookingsList.addEventListener("change", (event) => {
+sellerBookingsList.addEventListener("change", async (event) => {
   const target = event.target;
   if (!(target instanceof HTMLSelectElement) || !target.classList.contains("arrival-status-select")) {
     return;
@@ -2604,11 +2671,11 @@ sellerBookingsList.addEventListener("change", (event) => {
   booking.arrival_status = nextArrivalStatus;
   notifyOwnerAppointmentUpdated(booking, `עודכן מצב הגעה ל${formatArrivalStatus(booking.arrival_status)}`);
   notifyCustomerAppointmentUpdated(booking, `מצב ההגעה עודכן ל${formatArrivalStatus(booking.arrival_status)}`);
-  saveState();
+  await saveState();
   rerenderAll();
 });
 
-businessForm.addEventListener("click", (event) => {
+businessForm.addEventListener("click", async (event) => {
   const colorButton = event.target.closest("[data-theme-color]");
   if (colorButton) {
     selectThemeColor(colorButton.dataset.themeColor);
@@ -2628,8 +2695,11 @@ businessForm.addEventListener("click", (event) => {
     state.business.profile_image = "";
   }
 
-  saveState();
+  clearButton.disabled = true;
+  const saved = await saveState();
   rerenderAll();
+  clearButton.disabled = false;
+  if (saved) appUi.toast("התמונה הוסרה ונשמרה.", { variant: "success" });
 });
 
 businessForm.addEventListener("input", (event) => {
@@ -2726,6 +2796,10 @@ businessForm.addEventListener("submit", async (event) => {
 
 sellerCredentialsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = event.submitter instanceof HTMLButtonElement
+    ? event.submitter
+    : sellerCredentialsForm.querySelector('button[type="submit"]');
+  if (submitButton?.disabled) return;
   const username = String(sellerCredentialsForm.elements.username.value).trim();
   const password = String(sellerCredentialsForm.elements.password.value);
 
@@ -2734,42 +2808,50 @@ sellerCredentialsForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (!password.trim()) {
+    appUi.toast("לא הוזנה סיסמה חדשה, ולכן אין מה לשמור.", { variant: "warning" });
+    return;
+  }
+
+  if (submitButton) submitButton.disabled = true;
   try {
     if (supabaseEnabled && ownerSession.authUserId) {
       if (username !== OWNER_LOGIN_NAME) {
-        appUi.toast(`במצב Supabase שם המשתמש לניהול נשאר ${OWNER_LOGIN_NAME}. אפשר לשנות כאן רק סיסמה.`, { variant: "warning" });
+        appUi.toast(`שם המשתמש לניהול נשאר ${OWNER_LOGIN_NAME}. אפשר לשנות כאן רק סיסמה.`, { variant: "warning" });
         sellerCredentialsForm.elements.username.value = OWNER_LOGIN_NAME;
         return;
       }
-      if (password.trim()) {
-        await supabaseApi.updateOwnerCredentials({ password });
-      }
+      await supabaseApi.updateOwnerCredentials({ password });
     } else if (!supabaseEnabled) {
-      throw new Error("לא ניתן לשמור סיסמה בדפדפן. צריך חיבור פעיל ל-Supabase Auth.");
+      throw new Error("לא ניתן לשמור סיסמה בלי חיבור מאובטח לשרת.");
     }
-    state.sellerCredentials.username = supabaseEnabled ? OWNER_LOGIN_NAME : username;
+    state.sellerCredentials.username = OWNER_LOGIN_NAME;
     sellerCredentialsForm.elements.password.value = "";
-    saveState();
     rerenderAll();
-    appUi.toast("פרטי ההתחברות נשמרו ב-Supabase Auth.", { variant: "success" });
+    appUi.toast("הסיסמה החדשה נשמרה בחשבון הניהול המאובטח.", { variant: "success" });
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו לעדכן את פרטי ההתחברות.", { variant: "error" });
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
 });
 
-addServiceButton.addEventListener("click", () => {
+addServiceButton.addEventListener("click", async () => {
+  if (addServiceButton.disabled) return;
+  addServiceButton.disabled = true;
   state.services.push({
-    id: window.crypto?.randomUUID ? window.crypto.randomUUID() : `service-${Date.now()}`,
+    id: createAppUuid(),
     category: "קטגוריה ראשית",
     name: "שירות חדש",
     price: 0,
     duration_minutes: 30
   });
-  saveState();
+  await saveState();
   rerenderAll();
+  addServiceButton.disabled = false;
 });
 
-servicesEditor.addEventListener("click", (event) => {
+servicesEditor.addEventListener("click", async (event) => {
   const target = event.target.closest(".remove-service-button");
   if (!target) {
     return;
@@ -2781,14 +2863,21 @@ servicesEditor.addEventListener("click", (event) => {
   }
 
   const serviceId = row.dataset.serviceId;
+  target.disabled = true;
+  const deleted = await deleteRemoteOwnerRow("services", serviceId);
+  if (!deleted) {
+    target.disabled = false;
+    return;
+  }
   state.services = state.services.filter((service) => service.id !== serviceId);
-  deleteRemoteOwnerRow("services", serviceId);
-  saveState();
+  lastConfirmedOwnerState = structuredClone(state);
   rerenderAll();
 });
 
-servicesForm.addEventListener("submit", (event) => {
+servicesForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+  if (submitButton?.disabled) return;
   state.services = Array.from(servicesEditor.querySelectorAll("[data-service-id]")).map((row) => ({
     id: row.dataset.serviceId,
     name: String(row.querySelector('[data-service-field="name"]').value).trim(),
@@ -2796,15 +2885,22 @@ servicesForm.addEventListener("submit", (event) => {
     price: Number(row.querySelector('[data-service-field="price"]').value),
     duration_minutes: Number(row.querySelector('[data-service-field="duration_minutes"]').value)
   }));
-  saveState();
+  if (submitButton) submitButton.disabled = true;
+  const saved = await saveState();
   rerenderAll();
+  if (submitButton) submitButton.disabled = false;
+  if (saved) {
+    appUi.toast("השירותים נשמרו.", { variant: "success" });
+  }
 });
 
-hoursEditor.addEventListener("click", (event) => {
+hoursEditor.addEventListener("click", async (event) => {
   const modeButton = event.target.closest("[data-working-days-mode]");
   if (modeButton) {
+    if (modeButton.disabled) return;
+    modeButton.disabled = true;
     setWorkingDaysMode(modeButton.dataset.workingDaysMode);
-    saveState();
+    await saveState();
     rerenderAll();
     return;
   }
@@ -2819,18 +2915,21 @@ hoursEditor.addEventListener("click", (event) => {
     return;
   }
 
+  button.disabled = true;
   row.is_closed = !row.is_closed;
   if (!row.is_closed) {
     row.opens_at ||= "10:00";
     row.closes_at ||= "18:00";
   }
 
-  saveState();
+  await saveState();
   rerenderAll();
 });
 
-hoursForm.addEventListener("submit", (event) => {
+hoursForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+  if (submitButton?.disabled) return;
   state.workingHours = Array.from(hoursEditor.querySelectorAll("[data-hour-id]")).map((row, index) => {
     const opensAt = String(row.querySelector('[data-hour-field="opens_at"]').value).trim();
     const closesAt = String(row.querySelector('[data-hour-field="closes_at"]').value).trim();
@@ -2846,8 +2945,13 @@ hoursForm.addEventListener("submit", (event) => {
       is_closed: explicitlyClosed || !opensAt || !closesAt
     };
   });
-  saveState();
+  if (submitButton) submitButton.disabled = true;
+  const saved = await saveState();
   rerenderAll();
+  if (submitButton) submitButton.disabled = false;
+  if (saved) {
+    appUi.toast("שעות העבודה נשמרו.", { variant: "success" });
+  }
 });
 
 async function initializeOwnerPage() {
@@ -2878,7 +2982,7 @@ async function initializeOwnerPage() {
       ownerSession.authUserId = session.user.id;
       if (!(await supabaseApi.isOwnerUser())) {
         clearOwnerRealtimeSubscriptions();
-        setOwnerAccessMessage("החשבון הזה מחובר ל-Supabase אבל אין לו הרשאת ניהול לעסק הזה.", true);
+        setOwnerAccessMessage("החשבון המחובר אינו מורשה לנהל את העסק הזה.", true);
         showOwnerLogin();
         return;
       }
@@ -2889,7 +2993,7 @@ async function initializeOwnerPage() {
         showOwnerLayout();
       } catch (error) {
         clearOwnerRealtimeSubscriptions();
-        setOwnerAccessMessage(String(error?.message || "לא הצלחנו לטעון את נתוני הניהול מהשרת."), true);
+        setOwnerAccessMessage(appUi.translateMessage?.(error?.message) || "לא הצלחנו לטעון את נתוני הניהול מהשרת.", true);
         showOwnerLogin();
       }
     });
@@ -2912,7 +3016,7 @@ async function initializeOwnerPage() {
 
   ownerSession.authUserId = currentUser.id;
   if (!(await supabaseApi.isOwnerUser())) {
-    setOwnerAccessMessage("החשבון הזה מחובר ל-Supabase אבל אין לו הרשאת ניהול לעסק הזה.", true);
+    setOwnerAccessMessage("החשבון המחובר אינו מורשה לנהל את העסק הזה.", true);
     return;
   }
 
@@ -2923,7 +3027,7 @@ async function initializeOwnerPage() {
     showOwnerLayout();
   } catch (error) {
     clearOwnerRealtimeSubscriptions();
-    setOwnerAccessMessage(String(error?.message || "לא הצלחנו לטעון את נתוני הניהול מהשרת."), true);
+    setOwnerAccessMessage(appUi.translateMessage?.(error?.message) || "לא הצלחנו לטעון את נתוני הניהול מהשרת.", true);
     showOwnerLogin();
   }
 }
@@ -2931,7 +3035,7 @@ async function initializeOwnerPage() {
 void initializeOwnerPage()
   .catch((error) => {
     clearOwnerRealtimeSubscriptions();
-    setOwnerAccessMessage(String(error?.message || "לא הצלחנו לבדוק את הרשאת הניהול."), true);
+    setOwnerAccessMessage(appUi.translateMessage?.(error?.message) || "לא הצלחנו לבדוק את הרשאת הניהול.", true);
     showOwnerLogin();
   })
   .finally(() => {

@@ -388,7 +388,7 @@
         </label>
         <label class="field">
           <span>סיסמה</span>
-          <input type="password" name="password" required>
+          <input type="password" name="password" autocomplete="current-password" required>
         </label>
         <button class="ghost-button" id="customerForgotPasswordButton" type="button">שכחתי סיסמה</button>
         <button class="primary-button" type="submit">כניסה</button>
@@ -399,11 +399,11 @@
         <p class="auth-helper">הקלידי סיסמה חדשה פעמיים, שמרי, ואז תוכלי להיכנס שוב כלקוחה.</p>
         <label class="field">
           <span>סיסמה חדשה</span>
-          <input type="password" name="newPassword" required>
+          <input type="password" name="newPassword" minlength="6" autocomplete="new-password" required>
         </label>
         <label class="field">
           <span>אימות סיסמה</span>
-          <input type="password" name="confirmPassword" required>
+          <input type="password" name="confirmPassword" minlength="6" autocomplete="new-password" required>
         </label>
         <button class="primary-button" type="submit">שמור סיסמה חדשה</button>
         <button class="ghost-button" id="cancelCustomerRecoveryButton" type="button">חזרה לכניסה</button>
@@ -413,11 +413,11 @@
         <h3>התחברות בעלת העסק</h3>
         <label class="field">
           <span>שם משתמש</span>
-          <input type="text" name="username" required>
+          <input type="text" name="username" value="admin" autocomplete="username" readonly required>
         </label>
         <label class="field">
           <span>סיסמה</span>
-          <input type="password" name="password" required>
+          <input type="password" name="password" autocomplete="current-password" required>
         </label>
         <button class="primary-button" type="submit">כניסה לניהול</button>
       </form>

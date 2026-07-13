@@ -405,7 +405,7 @@ function initializeCustomerAuthDom() {
         </label>
         <label class="field" data-signup-profile-field>
           <span>\u05d8\u05dc\u05e4\u05d5\u05df</span>
-          <input type="tel" name="phone" required>
+          <input type="tel" name="phone" inputmode="tel" autocomplete="tel" required>
         </label>
         <label class="field">
           <span>\u05d0\u05d9\u05de\u05d9\u05d9\u05dc</span>
@@ -414,7 +414,7 @@ function initializeCustomerAuthDom() {
         <label class="field">
           <span>\u05d1\u05d7\u05e8\u05d9 \u05e1\u05d9\u05e1\u05de\u05d4 \u05dc\u05d7\u05e9\u05d1\u05d5\u05df</span>
           <div class="password-field-control">
-            <input id="customerSignupPassword" type="password" name="password" required>
+            <input id="customerSignupPassword" type="password" name="password" minlength="6" autocomplete="new-password" required>
             <button
               class="password-visibility-button"
               type="button"
@@ -433,7 +433,7 @@ function initializeCustomerAuthDom() {
         <label class="field">
           <span>\u05d0\u05d9\u05de\u05d5\u05ea \u05d4\u05e1\u05d9\u05e1\u05de\u05d4</span>
           <div class="password-field-control">
-            <input id="customerSignupConfirmPassword" type="password" name="confirmPassword" required>
+            <input id="customerSignupConfirmPassword" type="password" name="confirmPassword" minlength="6" autocomplete="new-password" required>
             <button
               class="password-visibility-button"
               type="button"
@@ -465,7 +465,7 @@ function initializeCustomerAuthDom() {
     <label class="field">
       <span>\u05e1\u05d9\u05e1\u05de\u05d4</span>
       <div class="password-field-control">
-        <input id="customerLoginPassword" type="password" name="password" required>
+        <input id="customerLoginPassword" type="password" name="password" autocomplete="current-password" required>
         <button
           class="password-visibility-button"
           type="button"
@@ -481,10 +481,6 @@ function initializeCustomerAuthDom() {
         </button>
       </div>
     </label>
-    <label class="field">
-      <span>\u05d8\u05dc\u05e4\u05d5\u05df \u05dc\u05e7\u05d9\u05e9\u05d5\u05e8 \u05d4\u05d7\u05e9\u05d1\u05d5\u05df</span>
-      <input type="tel" name="phone" autocomplete="tel" placeholder="\u05dc\u05d0 \u05d7\u05d5\u05d1\u05d4 \u05d0\u05dd \u05d4\u05d7\u05e9\u05d1\u05d5\u05df \u05db\u05d1\u05e8 \u05de\u05d5\u05db\u05e8">
-    </label>
     <button class="primary-button" type="submit">\u05db\u05e0\u05d9\u05e1\u05d4</button>
     <button class="ghost-button is-hidden" id="customerEmailConfirmedButton" type="button">\u05db\u05d1\u05e8 \u05d0\u05d9\u05e9\u05e8\u05ea\u05d9 \u05d1\u05de\u05d9\u05d9\u05dc, \u05d4\u05ea\u05d7\u05d1\u05e8\u05d9 \u05e2\u05db\u05e9\u05d9\u05d5</button>
     <button class="ghost-button" id="customerForgotPasswordButton" type="button">\u05e9\u05db\u05d7\u05ea\u05d9 \u05e1\u05d9\u05e1\u05de\u05d4</button>
@@ -498,7 +494,7 @@ function initializeCustomerAuthDom() {
     <label class="field">
       <span>\u05e1\u05d9\u05e1\u05de\u05d4 \u05d7\u05d3\u05e9\u05d4</span>
       <div class="password-field-control">
-        <input id="customerRecoveryNewPassword" type="password" name="newPassword" required>
+        <input id="customerRecoveryNewPassword" type="password" name="newPassword" minlength="6" autocomplete="new-password" required>
         <button
           class="password-visibility-button"
           type="button"
@@ -517,7 +513,7 @@ function initializeCustomerAuthDom() {
     <label class="field">
       <span>\u05d0\u05d9\u05de\u05d5\u05ea \u05e1\u05d9\u05e1\u05de\u05d4</span>
       <div class="password-field-control">
-        <input id="customerRecoveryConfirmPassword" type="password" name="confirmPassword" required>
+        <input id="customerRecoveryConfirmPassword" type="password" name="confirmPassword" minlength="6" autocomplete="new-password" required>
         <button
           class="password-visibility-button"
           type="button"
@@ -1837,7 +1833,7 @@ function joinWaitlistForCurrentSelection() {
 
   const createEntryLocally = () => {
     state.waitlistEntries.push({
-      id: `waitlist-${Date.now()}`,
+      id: createAppUuid(),
       customer_phone: currentCustomer?.phone || session.customerPhone || "",
       customer_name: buildCustomerFullName(currentCustomer?.firstName, currentCustomer?.lastName) || "לקוחה",
       customer_auth_user_id: session.authUserId || "",
@@ -3036,6 +3032,16 @@ customerSignupForm?.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (!isValidPhoneNumber(phone)) {
+    appUi.toast("מספר הטלפון אינו תקין. בדקי שהקלדת לפחות 9 ספרות.", { variant: "error" });
+    return;
+  }
+
+  if (password.length < 6) {
+    appUi.toast("הסיסמה קצרה מדי. בחרי סיסמה עם לפחות 6 תווים.", { variant: "error" });
+    return;
+  }
+
   if (password !== confirmPassword) {
     appUi.toast("הסיסמאות לא תואמות.", { variant: "error" });
     return;
@@ -3083,7 +3089,6 @@ customerLoginForm.addEventListener("submit", async (event) => {
   const formData = new FormData(customerLoginForm);
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
-  const loginPhone = String(formData.get("phone") || "").trim();
 
   if (!email || !password) {
     appUi.toast("צריך למלא אימייל וסיסמה.", { variant: "error" });
@@ -3104,7 +3109,7 @@ customerLoginForm.addEventListener("submit", async (event) => {
     await supabaseApi.signInCustomer({
       email,
       password,
-      phone: loginPhone || draftPhone,
+      phone: draftPhone,
       firstName: draftName.firstName,
       lastName: draftName.lastName
     });
@@ -3176,9 +3181,14 @@ customerRecoveryForm?.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (newPassword.length < 6) {
+    appUi.toast("הסיסמה קצרה מדי. בחרי סיסמה עם לפחות 6 תווים.", { variant: "error" });
+    return;
+  }
+
   if (submitButton) submitButton.disabled = true;
   try {
-    await supabaseApi.updateOwnerPassword(newPassword);
+    await supabaseApi.updateCurrentUserPassword(newPassword);
     appUi.toast("הסיסמה עודכנה, אפשר להתחבר.", { variant: "success" });
     await supabaseApi.signOut();
     isCustomerPasswordRecoveryMode = false;
@@ -3197,20 +3207,27 @@ customerRecoveryForm?.addEventListener("submit", async (event) => {
 
 sellerLoginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = event.submitter instanceof HTMLButtonElement
+    ? event.submitter
+    : sellerLoginForm.querySelector('button[type="submit"]');
+  if (submitButton?.disabled) return;
   const formData = new FormData(sellerLoginForm);
   const username = String(formData.get("username")).trim();
   const password = String(formData.get("password"));
 
   if (!supabaseEnabled) {
-    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
+    appUi.toast("החיבור המאובטח לשרת עדיין לא זמין בדף הזה.", { variant: "error" });
     return;
   }
 
+  if (submitButton) submitButton.disabled = true;
   try {
-    await supabaseApi.signInOwner({ email: username, password });
+    await supabaseApi.signInOwner({ username, password });
     window.location.href = "owner.html";
   } catch (error) {
     appUi.toast(error?.message || "פרטי הכניסה לא תקינים.", { variant: "error" });
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
 });
 
@@ -3245,6 +3262,11 @@ bookingForm.addEventListener("submit", async (event) => {
 
   if (!fullName || !phone) {
     appUi.toast("צריך למלא שם מלא וטלפון.", { variant: "error" });
+    return;
+  }
+
+  if (!isValidPhoneNumber(phone)) {
+    appUi.toast("מספר הטלפון אינו תקין. בדקי שהקלדת לפחות 9 ספרות.", { variant: "error" });
     return;
   }
 
@@ -3288,7 +3310,7 @@ bookingForm.addEventListener("submit", async (event) => {
         replacesBookingId: replacedBookingId || null
       });
     } else {
-      const bookingId = window.crypto?.randomUUID ? window.crypto.randomUUID() : `booking-${Date.now()}`;
+      const bookingId = createAppUuid();
       const localBooking = {
         id: bookingId,
         service_id: serviceBundle.primaryServiceId,
@@ -3403,17 +3425,16 @@ sellerCredentialsForm.addEventListener("submit", async (event) => {
   try {
     if (supabaseEnabled && session.role === "seller") {
       await supabaseApi.updateOwnerCredentials({
-        email: username,
         password
       });
     } else if (!supabaseEnabled) {
-      throw new Error("לא ניתן לשמור סיסמה בדפדפן. צריך חיבור פעיל ל-Supabase Auth.");
+      throw new Error("לא ניתן לשמור סיסמה בלי חיבור מאובטח לשרת.");
     }
     state.sellerCredentials.username = username;
     sellerCredentialsForm.elements.password.value = "";
     saveState();
     rerenderAll();
-    appUi.toast("פרטי ההתחברות נשמרו ב-Supabase Auth.", { variant: "success" });
+    appUi.toast("פרטי ההתחברות נשמרו בחשבון המאובטח.", { variant: "success" });
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו לעדכן את פרטי ההתחברות.", { variant: "error" });
   }
@@ -3421,7 +3442,7 @@ sellerCredentialsForm.addEventListener("submit", async (event) => {
 
 addServiceButton.addEventListener("click", () => {
   state.services.push({
-    id: window.crypto?.randomUUID ? window.crypto.randomUUID() : `service-${Date.now()}`,
+    id: createAppUuid(),
     category: "קטגוריה ראשית",
     name: "שירות חדש",
     price: 0,

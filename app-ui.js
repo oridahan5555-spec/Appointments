@@ -91,8 +91,24 @@
       warning: "כדאי לשים לב",
       info: "עדכון"
     }[variant];
+    const translatedTitle = translateMessage(title);
+    const translatedMessage = translateMessage(message);
+    const toastKey = `${variant}:${translatedTitle}:${translatedMessage}`;
+    const duplicateToast = Array.from(toastStack.children).find((item) => (
+      item.dataset.toastKey === toastKey && !item.classList.contains("is-leaving")
+    ));
+
+    if (duplicateToast) {
+      return () => duplicateToast.remove();
+    }
+
+    if (toastStack.children.length >= 4) {
+      toastStack.firstElementChild?.remove();
+    }
+
     const toastElement = document.createElement("article");
     toastElement.className = `app-toast is-${variant}`;
+    toastElement.dataset.toastKey = toastKey;
     toastElement.setAttribute("role", variant === "error" ? "alert" : "status");
     toastElement.innerHTML = `
       <span class="app-toast-icon" aria-hidden="true"></span>
@@ -102,8 +118,8 @@
       </div>
       <button class="app-toast-close" type="button" aria-label="סגירת הודעה">×</button>
     `;
-    toastElement.querySelector("strong").textContent = translateMessage(title);
-    toastElement.querySelector("p").textContent = translateMessage(message);
+    toastElement.querySelector("strong").textContent = translatedTitle;
+    toastElement.querySelector("p").textContent = translatedMessage;
     toastStack.appendChild(toastElement);
 
     let timeoutId = null;

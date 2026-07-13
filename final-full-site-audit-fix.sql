@@ -1953,6 +1953,107 @@ exception when undefined_table then null;
 end;
 $$;
 
+-- A full reset is deliberately server-side and owner-only. It clears the
+-- single business's operational data atomically while preserving auth.users,
+-- owner_profiles, the owner's password, and business.owner_email.
+create or replace function public.reset_owner_business_data()
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public, auth
+as $$
+declare
+  v_business_id uuid;
+begin
+  select profile.business_id
+  into v_business_id
+  from public.owner_profiles profile
+  where profile.id = auth.uid()
+  limit 1;
+
+  if auth.uid() is null or v_business_id is null then
+    raise exception 'OWNER_AUTH_REQUIRED' using errcode = '42501';
+  end if;
+
+  -- These legacy tables may exist from the retired email worker. Their rows
+  -- reference bookings, so clear only their queued/action data before bookings.
+  if to_regclass('public.email_outbox') is not null then
+    execute 'delete from public.email_outbox';
+  end if;
+  if to_regclass('public.booking_action_tokens') is not null then
+    execute 'delete from public.booking_action_tokens';
+  end if;
+
+  delete from public.email_delivery_events;
+  delete from public.notifications;
+  delete from public.waitlist_entries;
+  delete from public.bookings;
+  delete from public.customers;
+  delete from public.special_hours;
+  delete from public.blocked_slots;
+  delete from public.services;
+  delete from public.working_hours;
+
+  update public.business
+  set name = 'שם העסק שלך',
+      description = 'כתבי כאן תיאור קצר על העסק שלך.',
+      address = 'כתובת העסק',
+      phone = '',
+      instagram_url = '',
+      cover_image = '',
+      profile_image = '',
+      preparation_message = 'נא להגיע בזמן. אם צריך לבטל או לשנות תור, עדכני מראש.',
+      features = jsonb_build_object(
+        'businessDescription', true,
+        'preparationMessage', true,
+        'socialLink', true,
+        'whatsapp', true,
+        'phone', true,
+        'waze', true,
+        'calendarExport', true,
+        'customerRescheduling', true,
+        'waitingList', true,
+        'attendanceConfirmation', true,
+        'workingDaysMode', 'select_open_days',
+        'themeAccent', '#b25fd1'
+      ),
+      updated_at = now()
+  where id = v_business_id;
+
+  if not found then
+    raise exception 'OWNER_BUSINESS_NOT_FOUND';
+  end if;
+
+  insert into public.services (
+    category, name, price, duration_minutes, is_active, display_order
+  ) values
+    ('קטגוריה ראשית', 'שירות לדוגמה 1', 150, 60, true, 0),
+    ('קטגוריה ראשית', 'שירות לדוגמה 2', 220, 90, true, 1),
+    ('קטגוריה נוספת', 'שירות לדוגמה 3', 80, 30, true, 2);
+
+  insert into public.working_hours (
+    day_of_week, day_label, opens_at, closes_at, slot_interval_minutes, is_closed
+  ) values
+    (0, 'ראשון', '09:00', '18:00', 30, false),
+    (1, 'שני', '09:00', '18:00', 30, false),
+    (2, 'שלישי', '09:00', '18:00', 30, false),
+    (3, 'רביעי', '09:00', '18:00', 30, false),
+    (4, 'חמישי', '09:00', '18:00', 30, false),
+    (5, 'שישי', '09:00', '14:00', 30, false),
+    (6, 'שבת', null, null, 30, true);
+
+  return jsonb_build_object(
+    'ok', true,
+    'business_id', v_business_id,
+    'credentials_preserved', true,
+    'owner_email_preserved', true
+  );
+end;
+$$;
+
+revoke all on function public.reset_owner_business_data() from public, anon;
+grant execute on function public.reset_owner_business_data() to authenticated;
+
 -- Abort the transaction rather than leave a partially open installation.
 do $$
 declare
@@ -2015,7 +2116,8 @@ begin
     'public.join_waitlist_public(uuid,text,date,text)',
     'public.claim_email_delivery_event(uuid,text)',
     'public.complete_email_delivery_event(text)',
-    'public.release_email_delivery_event(text)'
+    'public.release_email_delivery_event(text)',
+    'public.reset_owner_business_data()'
   ]
   loop
     if to_regprocedure(v_signature) is null then
@@ -2035,7 +2137,8 @@ begin
     'public.join_waitlist_public(uuid,text,date,text)',
     'public.claim_email_delivery_event(uuid,text)',
     'public.complete_email_delivery_event(text)',
-    'public.release_email_delivery_event(text)'
+    'public.release_email_delivery_event(text)',
+    'public.reset_owner_business_data()'
   ]
   loop
     if has_function_privilege('anon', v_signature, 'EXECUTE')

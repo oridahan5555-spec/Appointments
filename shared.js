@@ -9,6 +9,24 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function createAppUuid() {
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const value = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
+}
+
+window.createAppUuid = createAppUuid;
+
 function sanitizeCssImageUrl(value) {
   const raw = String(value || "").trim();
   if (!raw || /["'\\\u0000-\u001f\u007f]/.test(raw)) {
@@ -308,7 +326,7 @@ function normalizeBlockedSlots(blockedSlots) {
 
   return blockedSlots
     .map((slot, index) => ({
-      id: String(slot?.id || `blocked-slot-${Date.now()}-${index}`),
+      id: String(slot?.id || createAppUuid()),
       blocked_date: String(slot?.blocked_date || "").trim(),
       blocked_time: String(slot?.blocked_time || "").trim().slice(0, 5),
       note: String(slot?.note || "").trim()
@@ -342,7 +360,7 @@ function normalizeCustomerNotes(notes) {
     }
 
     noteMap.set(customerPhone, {
-      id: String(item?.id || `customer-note-${Date.now()}-${index}`),
+      id: String(item?.id || createAppUuid()),
       customer_phone: customerPhone,
       customer_name: String(item?.customer_name || "").trim(),
       note: noteText,
@@ -355,6 +373,11 @@ function normalizeCustomerNotes(notes) {
 
 function normalizePhoneNumber(value) {
   return String(value || "").replace(/[^\d+]/g, "");
+}
+
+function isValidPhoneNumber(value) {
+  const digits = normalizePhoneNumber(value).replace(/\D/g, "");
+  return digits.length >= 9 && digits.length <= 15;
 }
 
 function normalizeSocialUrl(value) {
@@ -380,7 +403,7 @@ function normalizeSpecialHours(specialHours) {
 
   return specialHours
     .map((item, index) => ({
-      id: String(item?.id || `special-hours-${Date.now()}-${index}`),
+      id: String(item?.id || createAppUuid()),
       special_date: String(item?.special_date || "").trim(),
       opens_at: String(item?.opens_at || "").trim().slice(0, 5) || null,
       closes_at: String(item?.closes_at || "").trim().slice(0, 5) || null,
@@ -440,7 +463,7 @@ function normalizeWaitlistEntries(entries) {
 
   return entries
     .map((entry, index) => ({
-      id: String(entry?.id || `waitlist-${Date.now()}-${index}`),
+      id: String(entry?.id || createAppUuid()),
       customer_phone: String(entry?.customer_phone || "").trim(),
       customer_name: String(entry?.customer_name || "").trim(),
       service_id: String(entry?.service_id || "").trim(),
@@ -684,7 +707,7 @@ function normalizeBookings(bookings, staff, services) {
 
     return {
       ...booking,
-      id: String(booking.id || `booking-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      id: String(booking.id || createAppUuid()),
       service_ids: normalizedServiceIds,
       service_names: normalizedServiceNames,
       service_name: String(booking.service_name || normalizedServiceNames.join(" + ") || service?.name || "").trim(),
@@ -742,7 +765,7 @@ function normalizeNotifications(notifications) {
 
   return notifications
     .map((notification, index) => ({
-      id: String(notification?.id || `notification-${Date.now()}-${index}`),
+      id: String(notification?.id || createAppUuid()),
       title: String(notification?.title || "התראה חדשה").trim(),
       message: String(notification?.message || "").trim(),
       created_at: String(notification?.created_at || new Date().toISOString()),

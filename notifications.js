@@ -3,11 +3,7 @@
   const NOTIFICATION_PROMPT_KEY_PREFIX = "booking_app_notification_prompted_v2:";
 
   function createNotificationId() {
-    if (window.crypto?.randomUUID) {
-      return window.crypto.randomUUID();
-    }
-
-    return `notification-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    return window.createAppUuid();
   }
 
   function escapeHtml(value) {
@@ -725,5 +721,9 @@
     ownerUserId: OWNER_NOTIFICATION_USER_ID
   };
 
-  window.AppUi = createUiMessageCenter();
+  // app-ui.js owns messages and confirmations. Keep this older implementation
+  // only as a fallback when notifications.js is embedded on its own.
+  if (!window.AppUi) {
+    window.AppUi = createUiMessageCenter();
+  }
 })();
