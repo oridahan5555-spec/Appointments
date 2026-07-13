@@ -2,6 +2,8 @@ const LOCAL_STORAGE_KEY = "booking_app_local_working_v2";
 const SELLER_SESSION_KEY = "booking_app_seller_session_v1";
 const CUSTOMER_SESSION_KEY = "booking_app_customer_session_v1";
 const PENDING_BOOKING_DRAFT_KEY = "booking_app_pending_booking_draft_v1";
+const CUSTOMER_PASSWORD_RESET_COOLDOWN_KEY = "booking_app_customer_password_reset_cooldown_v1";
+const CUSTOMER_PASSWORD_RESET_COOLDOWN_MS = 60_000;
 const REJECT_UNDO_WINDOW_MS = 5000;
 const ARRIVAL_STATUS_OPTIONS = ["waiting", "arrived", "finished", "no_show"];
 const supabaseApi = window.AppSupabase || null;
@@ -186,6 +188,8 @@ let customerForgotPasswordButton = null;
 let cancelCustomerRecoveryButton = null;
 let customerEmailConfirmedButton = null;
 let customerLoginFeedback = null;
+let customerPasswordResetCooldownTimer = null;
+let customerPasswordResetCooldownUntil = 0;
 let openCustomerSignupButton = null;
 let openCustomerExistingLoginButton = null;
 let backToCustomerChooserFromSignup = null;
@@ -1643,8 +1647,9 @@ function renderChangeModeBanner() {
 
 function updateContactLinks() {
   const phoneNumber = (state.business.phone || "").replace(/[^0-9+]/g, "");
+  const whatsAppPhoneNumber = normalizeWhatsAppPhoneNumber(state.business.phone);
   const socialUrl = normalizeSocialUrl(state.business.instagram_url);
-  const showWhatsapp = isBusinessFeatureEnabled("whatsapp") && Boolean(phoneNumber);
+  const showWhatsapp = isBusinessFeatureEnabled("whatsapp") && Boolean(whatsAppPhoneNumber);
   const showPhone = isBusinessFeatureEnabled("phone") && Boolean(phoneNumber);
   const showWaze = isBusinessFeatureEnabled("waze") && Boolean(state.business.address);
   const showSocial = isBusinessFeatureEnabled("socialLink") && Boolean(socialUrl);
@@ -1652,7 +1657,7 @@ function updateContactLinks() {
   whatsAppLink.classList.toggle("is-hidden", !showWhatsapp);
   phoneLink.classList.toggle("is-hidden", !showPhone);
   wazeLink.classList.toggle("is-hidden", !showWaze);
-  if (showWhatsapp) whatsAppLink.href = `https://wa.me/${phoneNumber}`;
+  if (showWhatsapp) whatsAppLink.href = `https://wa.me/${whatsAppPhoneNumber}`;
   else whatsAppLink.removeAttribute("href");
   if (showPhone) phoneLink.href = `tel:${phoneNumber}`;
   else phoneLink.removeAttribute("href");
@@ -2749,9 +2754,57 @@ function setCustomerLoginFeedback(message = "") {
   customerLoginFeedback.classList.toggle("is-hidden", !text);
 }
 
+function getCustomerPasswordResetCooldownUntil() {
+  try {
+    return Math.max(
+      customerPasswordResetCooldownUntil,
+      Number(sessionStorage.getItem(CUSTOMER_PASSWORD_RESET_COOLDOWN_KEY) || 0)
+    );
+  } catch {
+    return customerPasswordResetCooldownUntil;
+  }
+}
+
+function setCustomerPasswordResetCooldownUntil(timestamp) {
+  customerPasswordResetCooldownUntil = timestamp > Date.now() ? timestamp : 0;
+  try {
+    if (customerPasswordResetCooldownUntil) {
+      sessionStorage.setItem(CUSTOMER_PASSWORD_RESET_COOLDOWN_KEY, String(customerPasswordResetCooldownUntil));
+    } else {
+      sessionStorage.removeItem(CUSTOMER_PASSWORD_RESET_COOLDOWN_KEY);
+    }
+  } catch {
+    // The button-level cooldown still works when session storage is unavailable.
+  }
+}
+
+function updateCustomerPasswordResetButton() {
+  if (!customerForgotPasswordButton) return;
+
+  const secondsRemaining = Math.ceil((getCustomerPasswordResetCooldownUntil() - Date.now()) / 1000);
+  window.clearTimeout(customerPasswordResetCooldownTimer);
+
+  if (secondsRemaining <= 0) {
+    setCustomerPasswordResetCooldownUntil(0);
+    customerForgotPasswordButton.disabled = false;
+    customerForgotPasswordButton.textContent = "שכחתי סיסמה";
+    return;
+  }
+
+  customerForgotPasswordButton.disabled = true;
+  customerForgotPasswordButton.textContent = `אפשר לבקש שוב בעוד ${secondsRemaining} שניות`;
+  customerPasswordResetCooldownTimer = window.setTimeout(updateCustomerPasswordResetButton, 1000);
+}
+
+function startCustomerPasswordResetCooldown() {
+  setCustomerPasswordResetCooldownUntil(Date.now() + CUSTOMER_PASSWORD_RESET_COOLDOWN_MS);
+  updateCustomerPasswordResetButton();
+}
+
 function showCustomerLoginPanel() {
   isCustomerPasswordRecoveryMode = false;
   setCustomerLoginFeedback("");
+  updateCustomerPasswordResetButton();
   customerChooserPanel?.classList.remove("is-active");
   customerSignupForm?.classList.remove("is-active");
   customerLoginForm?.classList.add("is-active");
@@ -3223,6 +3276,11 @@ customerLoginForm.addEventListener("input", () => {
 });
 
 customerForgotPasswordButton?.addEventListener("click", async () => {
+  if (getCustomerPasswordResetCooldownUntil() > Date.now()) {
+    setCustomerLoginFeedback("כבר ביקשת קישור לאיפוס. בדקי את תיבת האימייל ואת תיקיית הספאם, או חכי עד שהכפתור יאפשר בקשה נוספת.");
+    updateCustomerPasswordResetButton();
+    return;
+  }
   if (customerForgotPasswordButton.disabled) return;
   if (!supabaseEnabled) {
     appUi.toast("איפוס סיסמה במייל זמין רק כשהחיבור המאובטח לשרת פעיל.", { variant: "warning" });
@@ -3236,6 +3294,8 @@ customerForgotPasswordButton?.addEventListener("click", async () => {
   }
 
   customerForgotPasswordButton.disabled = true;
+  customerForgotPasswordButton.textContent = "שולחים קישור...";
+  setCustomerLoginFeedback("");
   try {
     clearRememberedCustomerSession();
     session.role = null;
@@ -3244,11 +3304,17 @@ customerForgotPasswordButton?.addEventListener("click", async () => {
     await supabaseApi.signOut().catch(() => {});
     rerenderAll();
     await supabaseApi.sendCustomerPasswordReset(email);
-    appUi.toast("שלחנו קישור לאיפוס סיסמה לאימייל שהקלדת.", { variant: "success" });
+    startCustomerPasswordResetCooldown();
+    setCustomerLoginFeedback("שלחנו קישור לאיפוס סיסמה. בדקי את תיבת האימייל וגם את תיקיית הספאם.");
   } catch (error) {
-    appUi.toast(error?.message || "לא הצלחנו לשלוח קישור לאיפוס סיסמה.", { variant: "error" });
+    if (error?.code === "PASSWORD_RESET_RATE_LIMITED") {
+      startCustomerPasswordResetCooldown();
+      setCustomerLoginFeedback(error.message);
+    } else {
+      appUi.toast(error?.message || "לא הצלחנו לשלוח קישור לאיפוס סיסמה.", { variant: "error" });
+    }
   } finally {
-    customerForgotPasswordButton.disabled = false;
+    updateCustomerPasswordResetButton();
   }
 });
 

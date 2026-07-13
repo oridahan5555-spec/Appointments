@@ -375,6 +375,38 @@ function normalizePhoneNumber(value) {
   return String(value || "").replace(/[^\d+]/g, "");
 }
 
+function normalizeWhatsAppPhoneNumber(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  if (/[^0-9+\s().-]/.test(raw)) {
+    return "";
+  }
+
+  if ((raw.match(/\+/g) || []).length > 1 || (raw.includes("+") && !raw.startsWith("+"))) {
+    return "";
+  }
+
+  let digits = raw.replace(/[\s().-]/g, "");
+  if (digits.startsWith("+")) {
+    digits = digits.slice(1);
+  } else if (digits.startsWith("00") && digits.length > 4) {
+    digits = digits.slice(2);
+  }
+
+  if (!/^\d{8,15}$/.test(digits)) {
+    return "";
+  }
+
+  if (digits.startsWith("0")) {
+    digits = `972${digits.slice(1)}`;
+  }
+
+  return /^\d{8,15}$/.test(digits) ? digits : "";
+}
+
 function isValidPhoneNumber(value) {
   const digits = normalizePhoneNumber(value).replace(/\D/g, "");
   return digits.length >= 9 && digits.length <= 15;

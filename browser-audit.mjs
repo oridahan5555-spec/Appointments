@@ -127,6 +127,7 @@ function installAuditSupabase() {
     notifications: [],
     waitlistEntries: [],
     passwordResetEmail: "",
+    failNextPasswordReset: false,
     customerLoadFailure: false,
     failNextOwnerSync: false
   });
@@ -232,6 +233,13 @@ function installAuditSupabase() {
     sendOwnerPasswordReset: async () => true,
     sendCustomerPasswordReset: async (email) => {
       const database = load();
+      if (database.failNextPasswordReset) {
+        database.failNextPasswordReset = false;
+        save(database);
+        const error = new Error("כבר נשלחה בקשת איפוס בזמן האחרון. בדקי את תיבת האימייל ואת תיקיית הספאם. אם אין הודעה, חכי דקה ונסי שוב.");
+        error.code = "PASSWORD_RESET_RATE_LIMITED";
+        throw error;
+      }
       database.passwordResetEmail = String(email || "").trim().toLowerCase();
       save(database);
       return true;
@@ -467,6 +475,11 @@ function installAuditSupabase() {
       database.sessionRole = "customer";
       database.sessionUserId = account.id;
       database.customerLoadFailure = false;
+      save(database);
+    },
+    failNextPasswordReset: () => {
+      const database = load();
+      database.failNextPasswordReset = true;
       save(database);
     },
     failNextOwnerSync: () => {
@@ -857,6 +870,34 @@ try {
     })()`);
     await waitForExpression(`window.__AUDIT_BACKEND__.read().passwordResetEmail === 'existing@example.com'`, "Password reset email was not requested");
     assert(!(await client.evaluate(`window.__AUDIT_BACKEND__.read().sessionUserId`)), "Forgot password unexpectedly signed the customer in");
+    const successfulResetRequest = await client.evaluate(`({
+      feedback: document.querySelector('#customerLoginFeedback')?.textContent || '',
+      buttonDisabled: document.querySelector('#customerForgotPasswordButton')?.disabled,
+      buttonText: document.querySelector('#customerForgotPasswordButton')?.textContent || ''
+    })`);
+    assert(successfulResetRequest.feedback.includes('תיקיית הספאם'), "Successful password reset request did not show clear email guidance");
+    assert(successfulResetRequest.buttonDisabled && successfulResetRequest.buttonText.includes('אפשר לבקש שוב'), "Password reset cooldown did not start");
+
+    await client.evaluate(`sessionStorage.removeItem('booking_app_customer_password_reset_cooldown_v1'); location.reload()`);
+    await waitForExpression(`document.querySelector('#businessName')?.textContent === 'Yael nails audit'`, "Public page did not reload after password reset cooldown test");
+    await client.evaluate(`(() => {
+      window.__AUDIT_BACKEND__.failNextPasswordReset();
+      document.querySelector('#openCustomerLogin').click();
+      document.querySelector('#openCustomerExistingLoginButton').click();
+      document.querySelector('#customerLoginForm').elements.email.value = 'existing@example.com';
+      document.querySelector('#customerForgotPasswordButton').click();
+    })()`);
+    await waitForExpression(
+      `document.querySelector('#customerLoginFeedback')?.textContent.includes('כבר נשלחה בקשת איפוס')`,
+      "Password reset rate limit did not show inline guidance"
+    );
+    const limitedResetRequest = await client.evaluate(`({
+      buttonDisabled: document.querySelector('#customerForgotPasswordButton')?.disabled,
+      errorToasts: Array.from(document.querySelectorAll('.app-toast')).filter((toast) =>
+        /בקשות איפוס|rate limit/i.test(toast.innerText)
+      ).length
+    })`);
+    assert(limitedResetRequest.buttonDisabled && limitedResetRequest.errorToasts === 0, "Password reset rate limit still produced repeated error UI");
   });
 
   await test("a conflicting customer login shows one inline error without breaking the site", async () => {

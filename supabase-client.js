@@ -499,7 +499,10 @@
     const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo });
     if (error) {
       if (String(error.message || "").toLowerCase().includes("rate limit")) {
-        throw new Error("נשלחו יותר מדי בקשות איפוס. חכי רגע ונסי שוב.");
+        throw createClientError(
+          "כבר נשלחה בקשת איפוס בזמן האחרון. בדקי את תיבת האימייל ואת תיקיית הספאם. אם אין הודעה, חכי דקה ונסי שוב.",
+          "PASSWORD_RESET_RATE_LIMITED"
+        );
       }
       throw error;
     }
