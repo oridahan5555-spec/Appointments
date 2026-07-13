@@ -177,7 +177,11 @@ function installAuditSupabase() {
       emitAuth("SIGNED_IN");
       return { user: currentUser(), session: sessionFor() };
     },
-    signInCustomer: async ({ email, password }) => {
+    signInCustomer: async (payload) => {
+      const { email, password } = payload;
+      if ("phone" in payload || "firstName" in payload || "lastName" in payload) {
+        throw new Error("Existing customer login must not submit booking profile fields");
+      }
       const database = load();
       const normalizedEmail = String(email || "").trim().toLowerCase();
       const account = database.accounts[normalizedEmail];
@@ -195,7 +199,7 @@ function installAuditSupabase() {
         database.customerLoadFailure = false;
         save(database);
         emitAuth("SIGNED_OUT");
-        const conflictError = new Error("הטלפון או האימייל כבר מחוברים לחשבון לקוחה אחר. התחברי עם האימייל המקורי או השתמשי בשכחתי סיסמה.");
+        const conflictError = new Error("החשבון שנכנסת אליו לא מחובר לפרופיל הלקוחה המתאים. התחברי עם האימייל שבו יצרת את החשבון, או השתמשי בשכחתי סיסמה.");
         conflictError.code = "CUSTOMER_ACCOUNT_CONFLICT";
         throw conflictError;
       }
@@ -868,7 +872,7 @@ try {
       form.requestSubmit();
     })()`);
     await waitForExpression(
-      `document.querySelector('#customerLoginFeedback')?.textContent.includes('כבר מחוברים לחשבון לקוחה אחר')`,
+      `document.querySelector('#customerLoginFeedback')?.textContent.includes('האימייל שבו יצרת את החשבון')`,
       "Conflicting customer login did not show its inline explanation"
     );
     await waitForExpression(`!window.__AUDIT_BACKEND__.read().sessionUserId`, "Conflicting login left a partial session active");
@@ -881,7 +885,7 @@ try {
       feedbackVisible: !document.querySelector('#customerLoginFeedback')?.classList.contains('is-hidden'),
       myBookingsHidden: document.querySelector('#myBookingsButton')?.classList.contains('is-hidden'),
       duplicateAccountToasts: Array.from(document.querySelectorAll('.app-toast')).filter((toast) =>
-        /חשבון הלקוחה לא חובר|כבר מחוברים לחשבון לקוחה אחר/.test(toast.innerText)
+        /חשבון הלקוחה לא חובר|פרופיל הלקוחה המתאים/.test(toast.innerText)
       ).length
     })`);
 

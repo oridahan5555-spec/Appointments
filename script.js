@@ -811,7 +811,7 @@ function getCustomerAccountIssueMessage(error) {
     || message.includes("כבר שייכים לחשבון לקוחה אחר")
     || message.includes("כבר מחוברים לחשבון לקוחה אחר")
   ) {
-    return "החשבון הזה לא חובר לעסק, כי הטלפון או האימייל כבר שייכים לחשבון לקוחה אחר. התנתקי והתחברי עם האימייל המקורי, או השתמשי ב'שכחתי סיסמה'.";
+    return "החשבון שנכנסת אליו לא מחובר לפרופיל הלקוחה המתאים. התנתקי והתחברי עם האימייל שבו יצרת את החשבון, או השתמשי ב'שכחתי סיסמה'.";
   }
 
   if (
@@ -3205,17 +3205,7 @@ customerLoginForm.addEventListener("submit", async (event) => {
   isCustomerAuthSubmitting = true;
   suppressCustomerAccountIssueUntil = Date.now() + 10_000;
   try {
-    const draftName = parseFullName(
-      String(bookingForm?.elements?.fullName?.value || uiState.bookingDraft.fullName || "").trim()
-    );
-    const draftPhone = String(bookingForm?.elements?.phone?.value || uiState.bookingDraft.phone || "").trim();
-    await supabaseApi.signInCustomer({
-      email,
-      password,
-      phone: draftPhone,
-      firstName: draftName.firstName,
-      lastName: draftName.lastName
-    });
+    await supabaseApi.signInCustomer({ email, password });
     await finalizeCustomerLogin();
   } catch (error) {
     setCustomerLoginFeedback(

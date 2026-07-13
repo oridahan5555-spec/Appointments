@@ -661,7 +661,7 @@
         throw new Error("התחברת, אבל חסר מספר טלפון בפרופיל. צרי קשר עם בעלת העסק כדי להשלים את הפרטים.");
       }
       if (claimError?.code === "CUSTOMER_ACCOUNT_CONFLICT" || claimMessage.includes("CUSTOMER_ALREADY_LINKED") || claimMessage.includes("כבר שייכים")) {
-        throw new Error("הטלפון או האימייל כבר מחוברים לחשבון לקוחה אחר. אם זה החשבון שלך, נסי להתחבר עם האימייל של אותו חשבון או השתמשי בשכחתי סיסמה.");
+        throw new Error("החשבון שנכנסת אליו לא מחובר לפרופיל הלקוחה המתאים. התחברי עם האימייל שבו יצרת את החשבון, או השתמשי ב'שכחתי סיסמה'.");
       }
       throw claimError;
     }
