@@ -904,7 +904,7 @@ try {
 
     await client.evaluate(`window.__AUDIT_BACKEND__.activateCustomerRecovery('existing@example.com')`);
     await client.send("Page.navigate", {
-      url: `http://127.0.0.1:${port}/mock/index.html?recovery-audit=1#access_token=audit&type=recovery`
+      url: `http://127.0.0.1:${port}/mock/index.html?password-recovery=1&code=audit`
     });
     await waitForExpression(
       `document.querySelector('#customerRecoveryForm')?.classList.contains('is-active')`,

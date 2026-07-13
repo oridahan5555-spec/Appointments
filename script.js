@@ -3951,7 +3951,9 @@ myBookingsList.addEventListener("click", async (event) => {
 function isCustomerPasswordRecoveryUrl() {
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const searchParams = new URLSearchParams(window.location.search);
-  return hashParams.get("type") === "recovery" || searchParams.get("type") === "recovery";
+  return hashParams.get("type") === "recovery"
+    || searchParams.get("type") === "recovery"
+    || searchParams.get("password-recovery") === "1";
 }
 
 function enterCustomerPasswordRecoveryMode() {

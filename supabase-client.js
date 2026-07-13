@@ -495,7 +495,7 @@
       throw new Error("צריך למלא אימייל כדי לאפס סיסמה.");
     }
 
-    const redirectTo = `${window.location.origin}/index.html`;
+    const redirectTo = `${window.location.origin}/index.html?password-recovery=1`;
     const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo });
     if (error) {
       if (String(error.message || "").toLowerCase().includes("rate limit")) {
