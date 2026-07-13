@@ -240,6 +240,14 @@ function installAuditSupabase() {
       save(database);
       return currentUser();
     },
+    updateCurrentUserPassword: async (password) => {
+      const database = load();
+      const accountEntry = Object.entries(database.accounts).find(([, account]) => account.id === database.sessionUserId);
+      if (!accountEntry) throw new Error("Authentication required");
+      accountEntry[1].password = password;
+      save(database);
+      return currentUser();
+    },
     updateOwnerCredentials: async ({ password }) => {
       const database = load();
       if (database.sessionRole !== "owner") throw new Error("Not authorized");
@@ -435,7 +443,8 @@ function installAuditSupabase() {
     subscribe: () => () => undefined,
     onAuthStateChange: (callback) => {
       authListeners.add(callback);
-      queueMicrotask(() => callback("INITIAL_SESSION", sessionFor()));
+      const recoveryLink = new URLSearchParams(location.hash.replace(/^#/, "")).get("type") === "recovery";
+      queueMicrotask(() => callback(recoveryLink ? "PASSWORD_RECOVERY" : "INITIAL_SESSION", sessionFor()));
       return { data: { subscription: { unsubscribe: () => authListeners.delete(callback) } } };
     },
     normalizePhone: (value) => String(value || "").replace(/[^\d+]/g, ""),
@@ -447,6 +456,15 @@ function installAuditSupabase() {
   window.__AUDIT_BACKEND__ = {
     read: () => clone(load()),
     reset: () => save(fresh()),
+    activateCustomerRecovery: (email) => {
+      const database = load();
+      const account = database.accounts[String(email || "").trim().toLowerCase()];
+      if (!account || account.role !== "customer") throw new Error("Customer account not found");
+      database.sessionRole = "customer";
+      database.sessionUserId = account.id;
+      database.customerLoadFailure = false;
+      save(database);
+    },
     failNextOwnerSync: () => {
       const database = load();
       database.failNextOwnerSync = true;
@@ -871,6 +889,71 @@ try {
     assert(!result.publicErrorVisible && result.modalOpen && result.feedbackVisible && result.myBookingsHidden, "Conflicting customer login UI is unsafe or unclear");
     assert(result.duplicateAccountToasts === 0, "Customer account conflict still created overlapping toasts");
     await client.evaluate(`document.querySelector('#closeModal').click()`);
+  });
+
+  await test("customer password recovery changes only the password", async () => {
+    const before = await client.evaluate(`(() => {
+      const database = window.__AUDIT_BACKEND__.read();
+      return {
+        users: JSON.stringify(database.users),
+        bookings: JSON.stringify(database.bookings),
+        notifications: JSON.stringify(database.notifications),
+        waitlistEntries: JSON.stringify(database.waitlistEntries)
+      };
+    })()`);
+
+    await client.evaluate(`window.__AUDIT_BACKEND__.activateCustomerRecovery('existing@example.com')`);
+    await client.send("Page.navigate", {
+      url: `http://127.0.0.1:${port}/mock/index.html?recovery-audit=1#access_token=audit&type=recovery`
+    });
+    await waitForExpression(
+      `document.querySelector('#customerRecoveryForm')?.classList.contains('is-active')`,
+      "Customer recovery link did not open the password reset form"
+    );
+
+    const opened = await client.evaluate(`({
+      modalOpen: !document.querySelector('#authModal')?.classList.contains('is-hidden'),
+      recoveryActive: document.querySelector('#customerRecoveryForm')?.classList.contains('is-active'),
+      businessName: document.querySelector('#businessName')?.textContent,
+      conflictFeedbackVisible: !document.querySelector('#customerLoginFeedback')?.classList.contains('is-hidden')
+    })`);
+    assert(opened.modalOpen && opened.recoveryActive, "Password recovery form is not visible");
+    assert(opened.businessName === "Yael nails audit", "Public business data disappeared during password recovery");
+    assert(!opened.conflictFeedbackVisible, "Password recovery incorrectly displayed a customer account conflict");
+
+    await client.evaluate(`(() => {
+      const form = document.querySelector('#customerRecoveryForm');
+      form.elements.newPassword.value = 'updated-strongpass';
+      form.elements.confirmPassword.value = 'updated-strongpass';
+      form.requestSubmit();
+    })()`);
+    await waitForExpression(
+      `window.__AUDIT_BACKEND__.read().accounts['existing@example.com'].password === 'updated-strongpass'`,
+      "Customer password was not updated"
+    );
+    await waitForExpression(
+      `!window.__AUDIT_BACKEND__.read().sessionUserId`,
+      "Customer remained signed in after password recovery"
+    );
+
+    const after = await client.evaluate(`(() => {
+      const database = window.__AUDIT_BACKEND__.read();
+      return {
+        users: JSON.stringify(database.users),
+        bookings: JSON.stringify(database.bookings),
+        notifications: JSON.stringify(database.notifications),
+        waitlistEntries: JSON.stringify(database.waitlistEntries),
+        loginActive: document.querySelector('#customerLoginForm')?.classList.contains('is-active'),
+        recoveryHidden: !document.querySelector('#customerRecoveryForm')?.classList.contains('is-active'),
+        cleanUrl: !location.hash && !location.search
+      };
+    })()`);
+
+    assert(after.users === before.users, "Password recovery changed the customer profile");
+    assert(after.bookings === before.bookings, "Password recovery changed customer bookings");
+    assert(after.notifications === before.notifications, "Password recovery changed customer notifications");
+    assert(after.waitlistEntries === before.waitlistEntries, "Password recovery changed waitlist data");
+    assert(after.loginActive && after.recoveryHidden && after.cleanUrl, "Password recovery did not return to a clean login screen");
   });
 
   await test("mock public layout is responsive on mobile and tablet", async () => {

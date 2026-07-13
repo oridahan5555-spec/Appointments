@@ -842,7 +842,7 @@ function showCustomerAccountIssue(error) {
   appUi.toast(message, { variant: "warning", title: "חשבון הלקוחה לא חובר" });
 }
 
-async function refreshStateFromSupabase() {
+async function refreshStateFromSupabase({ skipCustomerSession = false } = {}) {
   if (!supabaseEnabled) {
     return;
   }
@@ -858,22 +858,27 @@ async function refreshStateFromSupabase() {
     clearCustomerPrivateState();
 
     let customerAccountIssue = null;
-    try {
-      await syncSessionFromSupabase();
+    if (!skipCustomerSession && !isCustomerPasswordRecoveryMode) {
+      try {
+        await syncSessionFromSupabase();
 
-      if (session.role === "customer") {
-        const customerState = await supabaseApi.loadCustomerState();
-        if (!customerState?.customer) {
-          const profileError = new Error("חסרים פרטי לקוחה בחשבון המחובר.");
-          profileError.code = "CUSTOMER_PROFILE_INCOMPLETE";
-          throw profileError;
+        if (session.role === "customer") {
+          const customerState = await supabaseApi.loadCustomerState();
+          if (!customerState?.customer) {
+            const profileError = new Error("חסרים פרטי לקוחה בחשבון המחובר.");
+            profileError.code = "CUSTOMER_PROFILE_INCOMPLETE";
+            throw profileError;
+          }
+          mergeCustomerState(customerState);
         }
-        mergeCustomerState(customerState);
+      } catch (error) {
+        clearCustomerPrivateState();
+        session.role = session.authUserId ? "customer-unavailable" : null;
+        customerAccountIssue = error;
       }
-    } catch (error) {
-      clearCustomerPrivateState();
-      session.role = session.authUserId ? "customer-unavailable" : null;
-      customerAccountIssue = error;
+    } else {
+      session.role = null;
+      session.authUserId = null;
     }
 
     publicLoadedFromSupabase = true;
@@ -3943,6 +3948,22 @@ myBookingsList.addEventListener("click", async (event) => {
   }
 });
 
+function isCustomerPasswordRecoveryUrl() {
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const searchParams = new URLSearchParams(window.location.search);
+  return hashParams.get("type") === "recovery" || searchParams.get("type") === "recovery";
+}
+
+function enterCustomerPasswordRecoveryMode() {
+  isCustomerPasswordRecoveryMode = true;
+  clearRememberedCustomerSession();
+  clearCustomerPrivateState();
+  session.role = null;
+  session.authUserId = null;
+  clearRealtimeSubscriptions(personalRealtimeCleanups);
+  showCustomerRecoveryPanel();
+}
+
 async function initializeApp() {
   try {
     if (!supabaseEnabled) {
@@ -3950,28 +3971,19 @@ async function initializeApp() {
       return;
     }
 
-    showPublicLoadingState();
-    setupPublicRealtimeSubscriptions();
-    try {
-      await refreshStateFromSupabase();
-      setupPersonalRealtimeSubscriptions();
-      notificationCenter?.rememberCurrentNotifications();
-      await handleEmailEntryLinks();
-      showWizardStep(1);
-    } catch (error) {
-      clearRealtimeSubscriptions(personalRealtimeCleanups);
+    if (isCustomerPasswordRecoveryUrl()) {
+      enterCustomerPasswordRecoveryMode();
     }
 
     supabaseApi.onAuthStateChange(async (event) => {
-      if (event === "INITIAL_SESSION") {
+      if (event === "PASSWORD_RECOVERY") {
+        enterCustomerPasswordRecoveryMode();
         return;
       }
-      if (event === "PASSWORD_RECOVERY") {
-        clearRememberedCustomerSession();
-        session.role = null;
-        session.customerPhone = null;
-        session.authUserId = null;
-        showCustomerRecoveryPanel();
+      if (event === "INITIAL_SESSION") {
+        if (isCustomerPasswordRecoveryMode) {
+          showCustomerRecoveryPanel();
+        }
         return;
       }
       if (event === "SIGNED_OUT") {
@@ -3987,6 +3999,22 @@ async function initializeApp() {
         clearRealtimeSubscriptions(personalRealtimeCleanups);
       }
     });
+
+    showPublicLoadingState();
+    setupPublicRealtimeSubscriptions();
+    try {
+      await refreshStateFromSupabase({ skipCustomerSession: isCustomerPasswordRecoveryMode });
+      if (isCustomerPasswordRecoveryMode) {
+        showCustomerRecoveryPanel();
+      } else {
+        setupPersonalRealtimeSubscriptions();
+        notificationCenter?.rememberCurrentNotifications();
+        await handleEmailEntryLinks();
+        showWizardStep(1);
+      }
+    } catch (error) {
+      clearRealtimeSubscriptions(personalRealtimeCleanups);
+    }
   } finally {
     revealPublicApp();
   }
