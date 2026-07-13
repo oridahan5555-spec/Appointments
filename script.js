@@ -185,6 +185,7 @@ let customerSignupForm = null;
 let customerForgotPasswordButton = null;
 let cancelCustomerRecoveryButton = null;
 let customerEmailConfirmedButton = null;
+let customerLoginFeedback = null;
 let openCustomerSignupButton = null;
 let openCustomerExistingLoginButton = null;
 let backToCustomerChooserFromSignup = null;
@@ -458,6 +459,7 @@ function initializeCustomerAuthDom() {
   customerLoginForm.innerHTML = `
     <h3>\u05db\u05e0\u05d9\u05e1\u05d4 \u05dc\u05dc\u05e7\u05d5\u05d7 \u05e7\u05d9\u05d9\u05dd</h3>
     <p class="auth-helper">\u05d4\u05ea\u05d7\u05d1\u05e8\u05d9 \u05e2\u05dd \u05d4\u05d0\u05d9\u05de\u05d9\u05d9\u05dc \u05d5\u05d4\u05e1\u05d9\u05e1\u05de\u05d4 \u05e9\u05dc \u05d4\u05d7\u05e9\u05d1\u05d5\u05df \u05e9\u05dc\u05da.</p>
+    <p id="customerLoginFeedback" class="auth-feedback is-hidden" role="alert"></p>
     <label class="field">
       <span>\u05d0\u05d9\u05de\u05d9\u05d9\u05dc</span>
       <input type="email" name="email" autocomplete="email" required>
@@ -540,6 +542,7 @@ function initializeCustomerAuthDom() {
   customerForgotPasswordButton = document.getElementById("customerForgotPasswordButton");
   cancelCustomerRecoveryButton = document.getElementById("cancelCustomerRecoveryButton");
   customerEmailConfirmedButton = document.getElementById("customerEmailConfirmedButton");
+  customerLoginFeedback = document.getElementById("customerLoginFeedback");
   openCustomerSignupButton = document.getElementById("openCustomerSignupButton");
   openCustomerExistingLoginButton = document.getElementById("openCustomerExistingLoginButton");
   backToCustomerChooserFromSignup = document.getElementById("backToCustomerChooserFromSignup");
@@ -680,6 +683,7 @@ let publicLoadedFromSupabase = false;
 let customerAccountIssueMessage = "";
 let customerAccountIssueTimestamp = 0;
 let isCustomerAuthSubmitting = false;
+let suppressCustomerAccountIssueUntil = 0;
 
 function revealPublicApp() {
   document.documentElement.classList.remove("app-booting");
@@ -823,7 +827,7 @@ function getCustomerAccountIssueMessage(error) {
 }
 
 function showCustomerAccountIssue(error) {
-  if (isCustomerAuthSubmitting) {
+  if (isCustomerAuthSubmitting || Date.now() < suppressCustomerAccountIssueUntil) {
     return;
   }
 
@@ -2730,8 +2734,19 @@ function showCustomerSignupPanel() {
   customerRecoveryForm?.classList.remove("is-active");
 }
 
+function setCustomerLoginFeedback(message = "") {
+  if (!customerLoginFeedback) {
+    return;
+  }
+
+  const text = String(message || "").trim();
+  customerLoginFeedback.textContent = text;
+  customerLoginFeedback.classList.toggle("is-hidden", !text);
+}
+
 function showCustomerLoginPanel() {
   isCustomerPasswordRecoveryMode = false;
+  setCustomerLoginFeedback("");
   customerChooserPanel?.classList.remove("is-active");
   customerSignupForm?.classList.remove("is-active");
   customerLoginForm?.classList.add("is-active");
@@ -3131,6 +3146,7 @@ customerSignupForm?.addEventListener("submit", async (event) => {
 
   if (submitButton) submitButton.disabled = true;
   isCustomerAuthSubmitting = true;
+  suppressCustomerAccountIssueUntil = Date.now() + 10_000;
   try {
     const registration = await supabaseApi.registerCustomer({ firstName, lastName, phone, email, password });
     if (registration?.needsEmailConfirmation) {
@@ -3179,8 +3195,10 @@ customerLoginForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  setCustomerLoginFeedback("");
   if (submitButton) submitButton.disabled = true;
   isCustomerAuthSubmitting = true;
+  suppressCustomerAccountIssueUntil = Date.now() + 10_000;
   try {
     const draftName = parseFullName(
       String(bookingForm?.elements?.fullName?.value || uiState.bookingDraft.fullName || "").trim()
@@ -3195,11 +3213,18 @@ customerLoginForm.addEventListener("submit", async (event) => {
     });
     await finalizeCustomerLogin();
   } catch (error) {
-    appUi.toast(error?.message || "לא הצלחנו להתחבר.", { variant: "error" });
+    setCustomerLoginFeedback(
+      appUi.translateMessage?.(error?.message || "לא הצלחנו להתחבר.")
+      || String(error?.message || "לא הצלחנו להתחבר.")
+    );
   } finally {
     isCustomerAuthSubmitting = false;
     if (submitButton) submitButton.disabled = false;
   }
+});
+
+customerLoginForm.addEventListener("input", () => {
+  setCustomerLoginFeedback("");
 });
 
 customerForgotPasswordButton?.addEventListener("click", async () => {

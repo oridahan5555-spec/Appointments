@@ -2196,6 +2196,22 @@ a.ghost-button {
   gap: 12px;
 }
 
+.auth-feedback {
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid #f1b8b8;
+  border-radius: 12px;
+  background: #fff5f5;
+  color: #9f2f36;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.auth-feedback.is-hidden {
+  display: none;
+}
+
 .auth-choice-grid {
   display: grid;
   gap: 12px;
