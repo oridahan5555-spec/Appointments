@@ -6,7 +6,8 @@ create extension if not exists btree_gist;
 alter table public.business
   add column if not exists cover_image text not null default '',
   add column if not exists profile_image text not null default '',
-  add column if not exists preparation_message text not null default '';
+  add column if not exists preparation_message text not null default '',
+  add column if not exists owner_email text;
 
 create table if not exists public.special_hours (
   id uuid primary key default gen_random_uuid(),
@@ -30,13 +31,18 @@ create table if not exists public.blocked_slots (
 );
 
 alter table public.customers
-  add column if not exists auth_user_id uuid unique references auth.users(id) on delete set null;
+  add column if not exists auth_user_id uuid unique references auth.users(id) on delete set null,
+  add column if not exists email text;
 
 alter table public.bookings
   add column if not exists customer_auth_user_id uuid references auth.users(id) on delete set null,
+  add column if not exists customer_email text,
   add column if not exists replaces_booking_id uuid references public.bookings(id) on delete set null,
   add column if not exists hidden_for_customer boolean not null default false,
-  add column if not exists arrival_status text not null default '' check (arrival_status in ('', 'waiting', 'arrived', 'finished', 'no_show'));
+  add column if not exists arrival_status text not null default '' check (arrival_status in ('', 'waiting', 'arrived', 'finished', 'no_show')),
+  add column if not exists attendance_confirmation_requested_at timestamptz,
+  add column if not exists attendance_confirmation_status text not null default '',
+  add column if not exists attendance_confirmation_answered_at timestamptz;
 
 alter table public.waitlist_entries
   add column if not exists customer_auth_user_id uuid references auth.users(id) on delete set null;
@@ -82,12 +88,28 @@ alter table public.notifications enable row level security;
 alter table public.waitlist_entries enable row level security;
 alter table public.owner_profiles enable row level security;
 
+revoke all on table public.business, public.services, public.working_hours,
+  public.bookings, public.customers, public.notifications, public.waitlist_entries,
+  public.owner_profiles, public.special_hours, public.blocked_slots
+from public, anon, authenticated;
+grant select (
+  id, name, description, address, phone, instagram_url, features,
+  cover_image, profile_image, preparation_message, created_at, updated_at
+) on table public.business to anon, authenticated;
+grant insert, update, delete on table public.business to authenticated;
+grant select on table public.services, public.working_hours to anon, authenticated;
+grant insert, update, delete on table public.services, public.working_hours to authenticated;
+grant select, insert, update, delete on table public.blocked_slots,
+  public.special_hours, public.bookings, public.customers, public.notifications,
+  public.waitlist_entries to authenticated;
+grant select on table public.owner_profiles to authenticated;
+
 create or replace function public.is_owner()
 returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = pg_catalog, public, auth
 as $$
   select exists (
     select 1
@@ -101,7 +123,7 @@ returns uuid
 language sql
 stable
 security definer
-set search_path = public
+set search_path = pg_catalog, public, auth
 as $$
   select business_id
   from public.owner_profiles
@@ -114,7 +136,7 @@ returns uuid
 language sql
 stable
 security definer
-set search_path = public
+set search_path = pg_catalog, public, auth
 as $$
   select id
   from public.customers
@@ -123,7 +145,7 @@ as $$
 $$;
 
 revoke all on function public.is_owner() from public;
-grant execute on function public.is_owner() to anon, authenticated;
+grant execute on function public.is_owner() to authenticated;
 
 revoke all on function public.owner_business_id() from public;
 grant execute on function public.owner_business_id() to authenticated;
@@ -148,6 +170,29 @@ drop policy if exists "customers public read" on public.customers;
 drop policy if exists "customers public write" on public.customers;
 drop policy if exists "waitlist public read" on public.waitlist_entries;
 drop policy if exists "waitlist public write" on public.waitlist_entries;
+drop policy if exists "special_hours public read" on public.special_hours;
+drop policy if exists "blocked_slots public read" on public.blocked_slots;
+drop policy if exists "business owner manage" on public.business;
+drop policy if exists "services owner manage" on public.services;
+drop policy if exists "working_hours owner manage" on public.working_hours;
+drop policy if exists "special_hours owner manage" on public.special_hours;
+drop policy if exists "blocked_slots owner manage" on public.blocked_slots;
+drop policy if exists "owner_profiles owner read own" on public.owner_profiles;
+drop policy if exists "owner_profiles owner update own" on public.owner_profiles;
+drop policy if exists "customers owner manage" on public.customers;
+drop policy if exists "customers customer read own" on public.customers;
+drop policy if exists "customers customer insert own" on public.customers;
+drop policy if exists "customers customer update own" on public.customers;
+drop policy if exists "bookings owner manage" on public.bookings;
+drop policy if exists "bookings customer read own" on public.bookings;
+drop policy if exists "notifications owner manage" on public.notifications;
+drop policy if exists "notifications customer read own" on public.notifications;
+drop policy if exists "notifications customer update own" on public.notifications;
+drop policy if exists "notifications customer delete own" on public.notifications;
+drop policy if exists "waitlist owner manage" on public.waitlist_entries;
+drop policy if exists "waitlist customer read own" on public.waitlist_entries;
+drop policy if exists "waitlist customer insert own" on public.waitlist_entries;
+drop policy if exists "waitlist customer delete own" on public.waitlist_entries;
 
 create policy "business public read"
 on public.business
@@ -167,24 +212,12 @@ for select
 to anon, authenticated
 using (true);
 
-create policy "special_hours public read"
-on public.special_hours
-for select
-to anon, authenticated
-using (true);
-
-create policy "blocked_slots public read"
-on public.blocked_slots
-for select
-to anon, authenticated
-using (true);
-
 create policy "business owner manage"
 on public.business
 for all
 to authenticated
-using (public.is_owner())
-with check (public.is_owner());
+using (id = public.owner_business_id())
+with check (id = public.owner_business_id());
 
 create policy "services owner manage"
 on public.services
@@ -219,13 +252,6 @@ on public.owner_profiles
 for select
 to authenticated
 using (id = auth.uid());
-
-create policy "owner_profiles owner update own"
-on public.owner_profiles
-for update
-to authenticated
-using (id = auth.uid())
-with check (id = auth.uid());
 
 create policy "customers owner manage"
 on public.customers
@@ -305,17 +331,92 @@ for select
 to authenticated
 using (customer_auth_user_id = auth.uid());
 
-create policy "waitlist customer insert own"
-on public.waitlist_entries
-for insert
-to authenticated
-with check (customer_auth_user_id = auth.uid());
+create or replace function public.protect_customer_internal_fields()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public, auth
+as $$
+declare
+  v_auth_email text;
+begin
+  if public.is_owner() then return new; end if;
 
-create policy "waitlist customer delete own"
-on public.waitlist_entries
-for delete
-to authenticated
-using (customer_auth_user_id = auth.uid());
+  v_auth_email := lower(nullif(trim(coalesce(auth.jwt() ->> 'email', '')), ''));
+  if auth.uid() is null or v_auth_email is null then raise exception 'AUTH_REQUIRED'; end if;
+
+  if tg_op = 'INSERT' then
+    if nullif(coalesce(to_jsonb(new) ->> 'password', ''), '') is not null then
+      raise exception 'CUSTOMER_PASSWORD_STORAGE_FORBIDDEN';
+    end if;
+    new.email := v_auth_email;
+    new.owner_note := '';
+    new.is_blocked := false;
+    new.blocked_reason := '';
+    new.blocked_at := null;
+    new.no_show_count := 0;
+    return new;
+  end if;
+
+  if new.owner_note is distinct from old.owner_note
+     or new.is_blocked is distinct from old.is_blocked
+     or new.blocked_reason is distinct from old.blocked_reason
+     or new.blocked_at is distinct from old.blocked_at
+     or new.no_show_count is distinct from old.no_show_count
+     or (to_jsonb(new) -> 'password') is distinct from (to_jsonb(old) -> 'password')
+     or new.auth_user_id is distinct from old.auth_user_id then
+    raise exception 'CUSTOMER_INTERNAL_FIELDS_FORBIDDEN';
+  end if;
+  if new.email is distinct from old.email and lower(trim(coalesce(new.email, ''))) <> v_auth_email then
+    raise exception 'CUSTOMER_EMAIL_MUST_MATCH_AUTH';
+  end if;
+  new.email := v_auth_email;
+  return new;
+end;
+$$;
+
+revoke all on function public.protect_customer_internal_fields() from public;
+drop trigger if exists protect_customer_internal_fields on public.customers;
+create trigger protect_customer_internal_fields
+before insert or update on public.customers
+for each row execute function public.protect_customer_internal_fields();
+
+create or replace function public.get_public_blocked_slots()
+returns table (id uuid, blocked_date date, blocked_time time)
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select null::uuid, bs.blocked_date, bs.blocked_time
+  from public.blocked_slots bs
+  where bs.blocked_date >= current_date
+$$;
+
+revoke all on function public.get_public_blocked_slots() from public;
+grant execute on function public.get_public_blocked_slots() to anon, authenticated;
+
+create or replace function public.get_public_special_hours()
+returns table (
+  id uuid,
+  special_date date,
+  opens_at time,
+  closes_at time,
+  slot_interval_minutes integer,
+  is_closed boolean
+)
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select null::uuid, sh.special_date, sh.opens_at, sh.closes_at,
+         sh.slot_interval_minutes, sh.is_closed
+  from public.special_hours sh
+  where sh.special_date >= current_date
+$$;
+
+revoke all on function public.get_public_special_hours() from public;
+grant execute on function public.get_public_special_hours() to anon, authenticated;
 
 do $$
 begin
@@ -393,23 +494,23 @@ returns table (
 language sql
 stable
 security definer
-set search_path = public
+set search_path = pg_catalog, public
 as $$
   select
-    b.id,
-    b.service_id,
-    b.service_ids,
-    b.service_names,
+    null::uuid,
+    null::uuid,
+    '[]'::jsonb,
+    '[]'::jsonb,
     b.booking_date,
     b.booking_time,
     b.duration_minutes,
-    b.status,
-    b.replaces_booking_id,
-    b.hidden_for_customer,
-    b.arrival_status,
-    b.attendance_confirmation_requested_at,
-    b.attendance_confirmation_status,
-    b.attendance_confirmation_answered_at
+    'approved'::text,
+    null::uuid,
+    false,
+    ''::text,
+    null::timestamptz,
+    ''::text,
+    null::timestamptz
   from public.bookings b
   where b.status in ('pending', 'approved')
 $$;
@@ -424,7 +525,7 @@ create or replace function public.create_owner_notification_for_booking(
 returns uuid
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public, auth
 as $$
 declare
   v_booking public.bookings%rowtype;
@@ -502,7 +603,7 @@ returns table (
 )
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public, auth
 as $$
 declare
   v_auth_user_id uuid;
@@ -511,8 +612,15 @@ declare
   v_primary_service_id uuid;
   v_service_names jsonb;
   v_total_duration integer;
+  v_requested_count integer;
+  v_valid_count integer;
   v_start_at timestamp;
   v_end_at timestamp;
+  v_open_at time;
+  v_close_at time;
+  v_interval_minutes integer;
+  v_is_closed boolean;
+  v_slot_offset integer;
   v_booking_id uuid;
 begin
   v_auth_user_id := auth.uid();
@@ -536,6 +644,9 @@ begin
   if p_booking_date is null or p_booking_time is null then
     raise exception 'BOOKING_DATE_AND_TIME_REQUIRED';
   end if;
+  if p_booking_date < current_date or p_booking_date > current_date + 365 then
+    raise exception 'INVALID_BOOKING_DATE';
+  end if;
 
   v_requested_service_ids := case
     when jsonb_typeof(coalesce(p_service_ids, '[]'::jsonb)) = 'array'
@@ -543,29 +654,77 @@ begin
       then p_service_ids
     else jsonb_build_array(p_service_id::text)
   end;
+  v_requested_count := jsonb_array_length(v_requested_service_ids);
+  if v_requested_count < 1 or v_requested_count > 10 then
+    raise exception 'INVALID_SERVICE_SELECTION';
+  end if;
 
   with requested as (
     select value::uuid as service_id, ordinality
     from jsonb_array_elements_text(v_requested_service_ids) with ordinality
+  ), valid as (
+    select r.service_id, r.ordinality, s.name, s.duration_minutes
+    from requested r
+    join public.services s on s.id = r.service_id
+    where s.is_active = true
   )
   select
-    (array_agg(s.id order by r.ordinality))[1],
-    to_jsonb(array_agg(s.name order by r.ordinality)),
-    coalesce(sum(s.duration_minutes), 0)
+    (array_agg(service_id order by ordinality))[1],
+    to_jsonb(array_agg(name order by ordinality)),
+    coalesce(sum(duration_minutes), 0),
+    count(distinct service_id)
   into
     v_primary_service_id,
     v_service_names,
-    v_total_duration
-  from requested r
-  join public.services s on s.id = r.service_id
-  where s.is_active = true;
+    v_total_duration,
+    v_valid_count
+  from valid;
 
-  if v_primary_service_id is null or v_total_duration <= 0 then
+  if v_primary_service_id is null or v_total_duration <= 0 or v_valid_count <> v_requested_count then
     raise exception 'INVALID_SERVICE_SELECTION';
   end if;
 
   v_start_at := (p_booking_date + p_booking_time)::timestamp;
   v_end_at := v_start_at + make_interval(mins => v_total_duration);
+
+  if v_start_at <= (now() at time zone 'Asia/Jerusalem') then
+    raise exception 'TIME_SLOT_NOT_AVAILABLE';
+  end if;
+
+  select sh.opens_at, sh.closes_at, sh.slot_interval_minutes, sh.is_closed
+  into v_open_at, v_close_at, v_interval_minutes, v_is_closed
+  from public.special_hours sh
+  where sh.special_date = p_booking_date
+  limit 1;
+
+  if not found then
+    select wh.opens_at, wh.closes_at, wh.slot_interval_minutes, wh.is_closed
+    into v_open_at, v_close_at, v_interval_minutes, v_is_closed
+    from public.working_hours wh
+    where wh.day_of_week = extract(dow from p_booking_date)::integer
+    limit 1;
+  end if;
+
+  if v_is_closed or v_open_at is null or v_close_at is null
+     or v_start_at < (p_booking_date + v_open_at)::timestamp
+     or v_end_at > (p_booking_date + v_close_at)::timestamp then
+    raise exception 'TIME_SLOT_NOT_AVAILABLE';
+  end if;
+
+  v_interval_minutes := greatest(coalesce(v_interval_minutes, 30), 1);
+  v_slot_offset := floor(extract(epoch from (v_start_at - (p_booking_date + v_open_at)::timestamp)) / 60)::integer;
+  if v_slot_offset % v_interval_minutes <> 0 then
+    raise exception 'TIME_SLOT_NOT_AVAILABLE';
+  end if;
+
+  if p_replaces_booking_id is not null and not exists (
+    select 1 from public.bookings b
+    where b.id = p_replaces_booking_id
+      and b.customer_auth_user_id = v_auth_user_id
+      and b.status in ('pending', 'approved')
+  ) then
+    raise exception 'BOOKING_NOT_FOUND';
+  end if;
 
   if exists (
     select 1
@@ -595,6 +754,7 @@ begin
     customer_first_name,
     customer_last_name,
     customer_phone,
+    customer_email,
     customer_auth_user_id,
     notes,
     booking_date,
@@ -608,11 +768,12 @@ begin
     v_primary_service_id,
     v_requested_service_ids,
     coalesce(v_service_names, '[]'::jsonb),
-    coalesce(nullif(trim(p_customer_first_name), ''), v_customer.first_name),
-    coalesce(nullif(trim(p_customer_last_name), ''), v_customer.last_name),
+    coalesce(nullif(left(trim(p_customer_first_name), 100), ''), v_customer.first_name),
+    coalesce(nullif(left(trim(p_customer_last_name), 100), ''), v_customer.last_name),
     coalesce(nullif(regexp_replace(coalesce(p_customer_phone, ''), '[^0-9+]', '', 'g'), ''), v_customer.phone),
+    v_customer.email,
     v_auth_user_id,
-    trim(coalesce(p_notes, '')),
+    left(trim(coalesce(p_notes, '')), 1000),
     p_booking_date,
     p_booking_time,
     v_total_duration,
@@ -651,7 +812,7 @@ create or replace function public.cancel_my_booking(
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public, auth
 as $$
 declare
   v_booking public.bookings%rowtype;
@@ -689,7 +850,7 @@ create or replace function public.hide_my_booking(
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public, auth
 as $$
 begin
   update public.bookings
@@ -716,7 +877,7 @@ create or replace function public.respond_attendance_confirmation(
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public, auth
 as $$
 begin
   if p_response not in ('confirmed', 'declined') then
@@ -730,16 +891,67 @@ begin
     updated_at = now()
   where id = p_booking_id
     and customer_auth_user_id = auth.uid()
-    and status = 'approved';
+    and status = 'approved'
+    and attendance_confirmation_requested_at is not null
+    and attendance_confirmation_status = 'pending';
 
   if not found then
-    raise exception 'BOOKING_NOT_FOUND';
+    raise exception 'BOOKING_NOT_AVAILABLE_FOR_ATTENDANCE_RESPONSE';
   end if;
 end;
 $$;
 
 revoke all on function public.respond_attendance_confirmation(uuid, text) from public;
 grant execute on function public.respond_attendance_confirmation(uuid, text) to authenticated;
+
+create or replace function public.request_booking_attendance_confirmation(p_booking_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = pg_catalog, public, auth
+as $$
+declare
+  v_booking public.bookings%rowtype;
+begin
+  if not public.is_owner() then raise exception 'OWNER_REQUIRED'; end if;
+
+  select * into v_booking
+  from public.bookings
+  where id = p_booking_id
+  for update;
+  if not found or v_booking.status <> 'approved' then
+    raise exception 'BOOKING_NOT_AVAILABLE';
+  end if;
+
+  if v_booking.customer_auth_user_id is not null then
+    insert into public.notifications (
+      title, message, user_id, type, booking_id, action_url, metadata, event_key
+    ) values (
+      'בקשת אישור הגעה',
+      format('נשמח לדעת אם תגיעי לתור בתאריך %s בשעה %s.', v_booking.booking_date, to_char(v_booking.booking_time, 'HH24:MI')),
+      v_booking.customer_auth_user_id::text,
+      'attendance_confirmation',
+      v_booking.id,
+      'index.html?booking=' || v_booking.id::text,
+      jsonb_build_object('booking_id', v_booking.id),
+      'attendance_request:' || v_booking.id::text
+    )
+    on conflict (event_key) do update
+    set message = excluded.message,
+        is_read = false,
+        created_at = now();
+  end if;
+
+  update public.bookings
+  set attendance_confirmation_requested_at = coalesce(attendance_confirmation_requested_at, now()),
+      attendance_confirmation_status = case when attendance_confirmation_status = '' then 'pending' else attendance_confirmation_status end,
+      updated_at = now()
+  where id = v_booking.id;
+end;
+$$;
+
+revoke all on function public.request_booking_attendance_confirmation(uuid) from public;
+grant execute on function public.request_booking_attendance_confirmation(uuid) to authenticated;
 
 create or replace function public.join_waitlist_public(
   p_service_id uuid,
@@ -750,11 +962,13 @@ create or replace function public.join_waitlist_public(
 returns uuid
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public, auth
 as $$
 declare
   v_customer public.customers%rowtype;
+  v_service_name text;
   v_entry_id uuid;
+  v_owner_id uuid;
 begin
   select * into v_customer
   from public.customers
@@ -763,6 +977,30 @@ begin
 
   if not found then
     raise exception 'CUSTOMER_PROFILE_REQUIRED';
+  end if;
+  if v_customer.is_blocked then
+    raise exception 'CUSTOMER_BLOCKED';
+  end if;
+  if p_booking_date < current_date then
+    raise exception 'INVALID_WAITLIST_DATE';
+  end if;
+
+  select s.name into v_service_name
+  from public.services s
+  where s.id = p_service_id and s.is_active = true;
+  if not found then
+    raise exception 'INVALID_SERVICE';
+  end if;
+
+  select w.id into v_entry_id
+  from public.waitlist_entries w
+  where w.customer_auth_user_id = auth.uid()
+    and w.service_id = p_service_id
+    and w.booking_date = p_booking_date
+    and w.status = 'waiting'
+  limit 1;
+  if v_entry_id is not null then
+    return v_entry_id;
   end if;
 
   insert into public.waitlist_entries (
@@ -780,12 +1018,31 @@ begin
     v_customer.phone,
     trim(concat(v_customer.first_name, ' ', v_customer.last_name)),
     p_service_id,
-    p_service_name,
+    v_service_name,
     p_booking_date,
-    trim(coalesce(p_notes, '')),
+    left(trim(coalesce(p_notes, '')), 1000),
     'waiting'
   )
   returning id into v_entry_id;
+
+  select op.id into v_owner_id
+  from public.owner_profiles op
+  order by op.created_at
+  limit 1;
+  if v_owner_id is not null then
+    insert into public.notifications (
+      title, message, user_id, type, action_url, metadata, event_key
+    ) values (
+      'לקוחה הצטרפה לרשימת ההמתנה',
+      format('%s הצטרפה לרשימת ההמתנה ל%s בתאריך %s.', trim(concat(v_customer.first_name, ' ', v_customer.last_name)), v_service_name, p_booking_date),
+      v_owner_id::text,
+      'waitlist_joined',
+      'owner.html#ownerWaitlistSection',
+      jsonb_build_object('waitlist_id', v_entry_id),
+      'waitlist_joined:' || v_entry_id::text
+    )
+    on conflict (event_key) do nothing;
+  end if;
 
   return v_entry_id;
 end;
@@ -793,5 +1050,50 @@ $$;
 
 revoke all on function public.join_waitlist_public(uuid, text, date, text) from public;
 grant execute on function public.join_waitlist_public(uuid, text, date, text) to authenticated;
+
+create or replace function public.promote_waitlist_after_booking_cancel()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_waitlist_id uuid;
+begin
+  if new.status <> 'cancelled' or old.status is not distinct from new.status then
+    return new;
+  end if;
+
+  select w.id into v_waitlist_id
+  from public.waitlist_entries w
+  where w.status = 'waiting'
+    and w.booking_date = new.booking_date
+    and (
+      w.service_id = new.service_id
+      or exists (
+        select 1
+        from jsonb_array_elements_text(coalesce(new.service_ids, '[]'::jsonb)) selected
+        where selected.value = w.service_id::text
+      )
+    )
+  order by w.created_at, w.id
+  limit 1
+  for update skip locked;
+
+  if v_waitlist_id is not null then
+    update public.waitlist_entries
+    set status = 'notified', notified_at = now()
+    where id = v_waitlist_id and status = 'waiting';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.promote_waitlist_after_booking_cancel() from public;
+drop trigger if exists promote_waitlist_after_booking_cancel on public.bookings;
+create trigger promote_waitlist_after_booking_cancel
+after update of status on public.bookings
+for each row execute function public.promote_waitlist_after_booking_cancel();
 
 commit;

@@ -39,8 +39,7 @@ const DEFAULT_DATA = {
     }
   },
   sellerCredentials: {
-    username: "admin",
-    password: "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
+    username: "admin"
   },
   services: [
     { id: "service-1", category: "קטגוריה ראשית", name: "שירות לדוגמה 1", price: 150, duration_minutes: 60 },
@@ -269,6 +268,7 @@ async function confirmCustomerAttendanceFromNotification(bookingId) {
   if (supabaseEnabled) {
     await supabaseApi.respondAttendance(booking.id, "confirmed");
     await refreshStateFromSupabase();
+    await sendAttendanceResponseOwnerEmail(booking);
   } else {
     booking.attendance_confirmation_status = "confirmed";
     booking.attendance_confirmation_answered_at = new Date().toISOString();
@@ -296,7 +296,7 @@ async function cancelCustomerBookingFromNotification(bookingId) {
     saveState();
     rerenderAll();
   }
-  void sendCancelledBookingEmails(booking);
+  await sendCancelledBookingEmails(booking);
   appUi.toast("ביטול התור נקלט.", { variant: "success" });
 }
 
@@ -655,72 +655,14 @@ function getCustomerSignupErrorMessage(error) {
 
 function loadState() {
   const defaults = structuredClone(DEFAULT_DATA);
-
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY) || localStorage.getItem("booking_app_local_working_v1");
-    if (!raw) {
-      return defaults;
-    }
-
-    const parsed = JSON.parse(raw);
-    const loadedState = {
-      business: normalizeBusiness({ ...defaults.business, ...(parsed.business || {}) }),
-      sellerCredentials: {
-        ...defaults.sellerCredentials,
-        ...(parsed.sellerCredentials || {})
-      },
-      services: normalizeServices(Array.isArray(parsed.services) && parsed.services.length ? parsed.services : defaults.services),
-      staff: Array.isArray(parsed.staff) && parsed.staff.length ? parsed.staff : defaults.staff,
-      workingHours: Array.isArray(parsed.workingHours) && parsed.workingHours.length ? parsed.workingHours : defaults.workingHours,
-      specialHours: normalizeSpecialHours(parsed.specialHours),
-      blockedSlots: normalizeBlockedSlots(parsed.blockedSlots),
-      waitlistEntries: normalizeWaitlistEntries(parsed.waitlistEntries),
-      bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
-      notifications: normalizeNotifications(parsed.notifications),
-      users: normalizeUsers(parsed.users),
-      customerNotes: normalizeCustomerNotes(parsed.customerNotes)
-    };
-
-    loadedState.bookings = normalizeBookings(loadedState.bookings, loadedState.staff, loadedState.services);
-    loadedState.staff = normalizeStaff(loadedState.staff);
-    return loadedState;
-  } catch (error) {
-    return defaults;
-  }
+  localStorage.removeItem(LOCAL_STORAGE_KEY);
+  localStorage.removeItem("booking_app_local_working_v1");
+  return defaults;
 }
 
 function saveState() {
-  const currentCustomerPhone = normalizePhoneNumber(session.customerPhone);
-  const savedUsers = currentCustomerPhone
-    ? state.users.filter((user) => isSamePhone(user.phone, currentCustomerPhone))
-    : [];
-  const savedBookings = currentCustomerPhone
-    ? state.bookings.filter((booking) => isSamePhone(booking.customer_phone, currentCustomerPhone))
-    : [];
-  const savedNotifications = currentCustomerPhone
-    ? state.notifications.filter((notification) => String(notification.user_id || "") === String(session.authUserId || getCurrentNotificationUserId()))
-    : [];
-  const savedWaitlistEntries = currentCustomerPhone
-    ? state.waitlistEntries.filter((entry) => isSamePhone(entry.customer_phone, currentCustomerPhone))
-    : [];
-
-  localStorage.setItem(
-    LOCAL_STORAGE_KEY,
-    JSON.stringify({
-      business: state.business,
-      sellerCredentials: state.sellerCredentials,
-      services: state.services,
-      staff: state.staff,
-      workingHours: state.workingHours,
-      specialHours: state.specialHours,
-      blockedSlots: state.blockedSlots,
-      waitlistEntries: savedWaitlistEntries,
-      bookings: savedBookings,
-      notifications: savedNotifications,
-      users: savedUsers,
-      customerNotes: state.customerNotes
-    })
-  );
+  localStorage.removeItem(LOCAL_STORAGE_KEY);
+  localStorage.removeItem("booking_app_local_working_v1");
 }
 
 let publicRealtimeCleanups = [];
@@ -898,7 +840,7 @@ function setupPublicRealtimeSubscriptions() {
   }
 
   clearRealtimeSubscriptions(publicRealtimeCleanups);
-  ["business", "services", "working_hours", "special_hours", "bookings"].forEach((table) => {
+  ["business", "services", "working_hours"].forEach((table) => {
     publicRealtimeCleanups.push(supabaseApi.subscribe(table, () => {
       schedulePublicRefresh();
     }));
@@ -924,15 +866,6 @@ function setupPersonalRealtimeSubscriptions() {
   personalRealtimeCleanups.push(supabaseApi.subscribe("waitlist_entries", () => {
     schedulePublicRefresh();
   }, `customer_auth_user_id=eq.${session.authUserId}`));
-}
-
-function rememberCustomerSession(phone) {
-  localStorage.setItem(
-    CUSTOMER_SESSION_KEY,
-    JSON.stringify({
-      phone: normalizePhoneNumber(phone)
-    })
-  );
 }
 
 function clearRememberedCustomerSession() {
@@ -1048,38 +981,6 @@ function restorePendingBookingDraft() {
 
 
 
-
-
-function restoreRememberedCustomerSession() {
-  if (supabaseEnabled) {
-    return;
-  }
-
-  try {
-    const raw = localStorage.getItem(CUSTOMER_SESSION_KEY);
-    if (!raw) {
-      return;
-    }
-
-    const parsed = JSON.parse(raw);
-    const rememberedPhone = normalizePhoneNumber(parsed?.phone);
-    if (!rememberedPhone) {
-      clearRememberedCustomerSession();
-      return;
-    }
-
-    const existingUser = state.users.find((user) => isSamePhone(user.phone, rememberedPhone));
-    if (!existingUser) {
-      clearRememberedCustomerSession();
-      return;
-    }
-
-    session.role = "customer";
-    session.customerPhone = rememberedPhone;
-  } catch (error) {
-    clearRememberedCustomerSession();
-  }
-}
 
 
 
@@ -1513,7 +1414,7 @@ function buildCurrentBookingEmailPayload(booking) {
 }
 
 async function sendCreatedBookingEmails(booking) {
-  if (!appEmail || !booking?.id) return;
+  if (!appEmail || !booking?.id) return [];
   const payload = buildCurrentBookingEmailPayload(booking);
   const customerEmail = payload?.customerEmail || "";
   const requests = [
@@ -1532,10 +1433,14 @@ async function sendCreatedBookingEmails(booking) {
   if (customerEmail && results[1]?.ok && !bookingSuccessPanel.classList.contains("is-hidden")) {
     bookingSuccessText.textContent = `${bookingSuccessText.textContent} שלחנו לך עדכון באימייל.`;
   }
+  if (results.some((result) => !result?.ok)) {
+    appUi.toast("התור נשמר בהצלחה, אבל לא הצלחנו לשלוח את כל הודעות האימייל.", { variant: "warning" });
+  }
+  return results;
 }
 
 async function sendCancelledBookingEmails(booking) {
-  if (!appEmail || !booking?.id) return;
+  if (!appEmail || !booking?.id) return [];
   const payload = buildCurrentBookingEmailPayload(booking);
   const customerEmail = payload?.customerEmail || "";
   const requests = [
@@ -1549,7 +1454,23 @@ async function sendCancelledBookingEmails(booking) {
       eventKey: `booking_cancelled_customer:${booking.id}`
     }));
   }
-  await Promise.all(requests);
+  const results = await Promise.all(requests);
+  if (results.some((result) => !result?.ok)) {
+    appUi.toast("הביטול נשמר, אבל לא הצלחנו לשלוח את כל הודעות האימייל.", { variant: "warning" });
+  }
+  return results;
+}
+
+async function sendAttendanceResponseOwnerEmail(booking) {
+  if (!appEmail || !booking?.id) return { ok: false, skipped: true };
+  const payload = buildCurrentBookingEmailPayload(booking);
+  const result = await appEmail.sendEmailNotification("attendance_response_owner", payload, {
+    eventKey: `attendance_response_owner:${booking.id}`
+  });
+  if (!result.ok) {
+    appUi.toast("אישור ההגעה נשמר, אבל עדכון האימייל לבעלת העסק לא נשלח.", { variant: "warning" });
+  }
+  return result;
 }
 
 function getBookingSubmitErrorMessage(error) {
@@ -1584,7 +1505,7 @@ function getBookingSubmitErrorMessage(error) {
   }
 
   if (message.includes("permission denied")) {
-    return "יש בעיית הרשאות בשמירת התור. צריך לעדכן את הרשאות Supabase.";
+    return "יש כרגע בעיית הרשאה בשמירת התור. נסי שוב בעוד רגע או פני לבעלת העסק.";
   }
 
   return `שגיאה בשמירת התור: ${String(error?.message || "נסי שוב בעוד רגע.")}`;
@@ -1662,7 +1583,7 @@ function updateContactLinks() {
     const socialLabel = getSocialNetworkLabel(socialUrl);
     socialLink.href = socialUrl;
     socialLink.target = "_blank";
-    socialLink.rel = "noreferrer";
+    socialLink.rel = "noopener noreferrer";
     socialLink.setAttribute("aria-label", socialLabel);
     socialLink.title = socialLabel;
   } else {
@@ -1870,7 +1791,7 @@ function getAvailableSlots(dateValue, serviceSelection = getSelectedServiceIds()
       continue;
     }
 
-    if (isSlotBlocked(dateValue, slotTime)) {
+    if (isSlotBlocked(dateValue, slotTime, Number(serviceBundle.duration_minutes))) {
       continue;
     }
 
@@ -2245,6 +2166,9 @@ function renderDetailsForm() {
       input.disabled = !isLoggedIn;
     });
   });
+  if (bookingForm.elements.email) {
+    bookingForm.elements.email.readOnly = isLoggedIn;
+  }
 
   bookingSubmitButton.disabled = (isLoggedIn && blockedCustomer) || uiState.isBookingSubmitting;
 }
@@ -2767,25 +2691,7 @@ async function finalizeCustomerLogin({ fullName = "", phone = "" } = {}) {
   await refreshStateFromSupabase();
   restorePendingBookingDraft();
   setupPersonalRealtimeSubscriptions();
-  if (session.customerPhone) {
-    rememberCustomerSession(session.customerPhone);
-  }
   notificationCenter?.rememberCurrentNotifications();
-}
-
-function finalizeLocalCustomerLogin(user) {
-  session.role = "customer";
-  session.authUserId = user.id || `local-customer:${normalizePhoneNumber(user.phone)}`;
-  session.customerPhone = normalizePhoneNumber(user.phone);
-  uiState.customerBookingsView = "active";
-  uiState.bookingDraft.fullName = buildCustomerFullName(user.firstName, user.lastName);
-  uiState.bookingDraft.phone = user.phone;
-  uiState.bookingDraft.email = user.email || "";
-  rememberCustomerSession(user.phone);
-  closeAuthModal();
-  restorePendingBookingDraft();
-  notificationCenter?.rememberCurrentNotifications();
-  rerenderAll();
 }
 
 function updateCurrentCustomer(fullName, phone) {
@@ -2798,7 +2704,6 @@ function updateCurrentCustomer(fullName, phone) {
       lastName: nameParts.lastName,
       phone,
       email: "",
-      password: "",
       owner_note: "",
       is_blocked: false,
       blocked_reason: "",
@@ -2816,7 +2721,6 @@ function updateCurrentCustomer(fullName, phone) {
     customer.no_show_count = Number(customer.no_show_count || 0);
   }
   session.customerPhone = normalizePhoneNumber(phone);
-  rememberCustomerSession(session.customerPhone);
 }
 
 
@@ -3114,6 +3018,10 @@ bookingForm.addEventListener("input", (event) => {
 
 customerSignupForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = event.submitter instanceof HTMLButtonElement
+    ? event.submitter
+    : customerSignupForm.querySelector('button[type="submit"]');
+  if (submitButton?.disabled) return;
   const formData = new FormData(customerSignupForm);
   const firstName = String(formData.get("firstName") || "").trim();
   const lastName = String(formData.get("lastName") || "").trim();
@@ -3134,30 +3042,11 @@ customerSignupForm?.addEventListener("submit", async (event) => {
   }
 
   if (!supabaseEnabled) {
-    const existing = state.users.find((user) => user.email === email || isSamePhone(user.phone, normalizedPhone));
-    if (existing && existing.email !== email) {
-      appUi.toast("כבר קיים חשבון עם הטלפון הזה.", { variant: "error" });
-      return;
-    }
-
-    const passwordHash = await hashPassword(password);
-    const localUser = existing || {
-      id: `local-customer-${Date.now()}`,
-      owner_note: "",
-      is_blocked: false,
-      blocked_reason: "",
-      blocked_at: "",
-      no_show_count: 0,
-      created_at: new Date().toISOString()
-    };
-    Object.assign(localUser, { firstName, lastName, phone: normalizedPhone, email, password: passwordHash });
-    if (!existing) state.users.push(localUser);
-    finalizeLocalCustomerLogin(localUser);
-    saveState();
-    appUi.toast("החשבון נוצר בהצלחה. את מחוברת עכשיו ויכולה לקבוע תור.", { variant: "success" });
+    appUi.toast("לא ניתן ליצור חשבון כרגע, כי החיבור המאובטח לשרת לא זמין.", { variant: "error" });
     return;
   }
 
+  if (submitButton) submitButton.disabled = true;
   try {
     const registration = await supabaseApi.registerCustomer({ firstName, lastName, phone, email, password });
     if (registration?.needsEmailConfirmation) {
@@ -3180,11 +3069,17 @@ customerSignupForm?.addEventListener("submit", async (event) => {
       prepareCustomerLoginAfterSignup(email);
     }
     appUi.toast(feedback.text, { variant: feedback.variant });
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
 });
 
 customerLoginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = event.submitter instanceof HTMLButtonElement
+    ? event.submitter
+    : customerLoginForm.querySelector('button[type="submit"]');
+  if (submitButton?.disabled) return;
   const formData = new FormData(customerLoginForm);
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
@@ -3196,19 +3091,11 @@ customerLoginForm.addEventListener("submit", async (event) => {
   }
 
   if (!supabaseEnabled) {
-    const localUser = state.users.find((user) => user.email === email);
-    const validPassword = localUser && await verifyStoredPassword(password, localUser.password, (passwordHash) => {
-      localUser.password = passwordHash;
-      saveState();
-    });
-    if (!validPassword) {
-      appUi.toast("האימייל או הסיסמה אינם נכונים.", { variant: "error" });
-      return;
-    }
-    finalizeLocalCustomerLogin(localUser);
+    appUi.toast("לא ניתן להתחבר כרגע, כי החיבור המאובטח לשרת לא זמין.", { variant: "error" });
     return;
   }
 
+  if (submitButton) submitButton.disabled = true;
   try {
     const draftName = parseFullName(
       String(bookingForm?.elements?.fullName?.value || uiState.bookingDraft.fullName || "").trim()
@@ -3224,12 +3111,15 @@ customerLoginForm.addEventListener("submit", async (event) => {
     await finalizeCustomerLogin();
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו להתחבר.", { variant: "error" });
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
 });
 
 customerForgotPasswordButton?.addEventListener("click", async () => {
+  if (customerForgotPasswordButton.disabled) return;
   if (!supabaseEnabled) {
-    appUi.toast("איפוס סיסמה במייל זמין רק כשהחיבור ל-Supabase פעיל.", { variant: "warning" });
+    appUi.toast("איפוס סיסמה במייל זמין רק כשהחיבור המאובטח לשרת פעיל.", { variant: "warning" });
     return;
   }
 
@@ -3239,6 +3129,7 @@ customerForgotPasswordButton?.addEventListener("click", async () => {
     return;
   }
 
+  customerForgotPasswordButton.disabled = true;
   try {
     clearRememberedCustomerSession();
     session.role = null;
@@ -3250,6 +3141,8 @@ customerForgotPasswordButton?.addEventListener("click", async () => {
     appUi.toast("שלחנו קישור לאיפוס סיסמה לאימייל שהקלדת.", { variant: "success" });
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו לשלוח קישור לאיפוס סיסמה.", { variant: "error" });
+  } finally {
+    customerForgotPasswordButton.disabled = false;
   }
 });
 
@@ -3259,9 +3152,13 @@ cancelCustomerRecoveryButton?.addEventListener("click", () => {
 
 customerRecoveryForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = event.submitter instanceof HTMLButtonElement
+    ? event.submitter
+    : customerRecoveryForm.querySelector('button[type="submit"]');
+  if (submitButton?.disabled) return;
 
   if (!supabaseEnabled) {
-    appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
+    appUi.toast("החיבור המאובטח לשרת עדיין לא זמין בדף הזה.", { variant: "error" });
     return;
   }
 
@@ -3279,6 +3176,7 @@ customerRecoveryForm?.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (submitButton) submitButton.disabled = true;
   try {
     await supabaseApi.updateOwnerPassword(newPassword);
     appUi.toast("הסיסמה עודכנה, אפשר להתחבר.", { variant: "success" });
@@ -3292,6 +3190,8 @@ customerRecoveryForm?.addEventListener("submit", async (event) => {
     showCustomerLoginPanel();
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו לעדכן את הסיסמה.", { variant: "error" });
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
 });
 
@@ -3308,8 +3208,6 @@ sellerLoginForm.addEventListener("submit", async (event) => {
 
   try {
     await supabaseApi.signInOwner({ email: username, password });
-    rememberSellerSession();
-    sessionStorage.setItem(SELLER_SESSION_KEY, "1");
     window.location.href = "owner.html";
   } catch (error) {
     appUi.toast(error?.message || "פרטי הכניסה לא תקינים.", { variant: "error" });
@@ -3375,14 +3273,6 @@ bookingForm.addEventListener("submit", async (event) => {
     const sourceBooking = replacedBookingId ? findBookingById(replacedBookingId) : null;
     const nameParts = parseFullName(fullName);
     let created = null;
-
-    if (supabaseEnabled && email && supabaseApi.updateCustomerEmail) {
-      try {
-        await supabaseApi.updateCustomerEmail(email);
-      } catch (emailError) {
-        console.warn("Could not save customer email before booking", emailError);
-      }
-    }
 
     if (supabaseEnabled) {
       created = await supabaseApi.createBooking({
@@ -3456,7 +3346,7 @@ bookingForm.addEventListener("submit", async (event) => {
     const newBooking = state.bookings.find((booking) => booking.id === created?.booking_id) || sourceBooking;
     if (newBooking) {
       showBookingSuccess(newBooking);
-      void sendCreatedBookingEmails(newBooking);
+      await sendCreatedBookingEmails(newBooking);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (error) {
@@ -3516,8 +3406,8 @@ sellerCredentialsForm.addEventListener("submit", async (event) => {
         email: username,
         password
       });
-    } else if (!supabaseEnabled && password) {
-      state.sellerCredentials.password = await hashPassword(password);
+    } else if (!supabaseEnabled) {
+      throw new Error("לא ניתן לשמור סיסמה בדפדפן. צריך חיבור פעיל ל-Supabase Auth.");
     }
     state.sellerCredentials.username = username;
     sellerCredentialsForm.elements.password.value = "";
@@ -3873,6 +3763,7 @@ myBookingsList.addEventListener("click", async (event) => {
       if (supabaseEnabled) {
         await supabaseApi.respondAttendance(booking.id, response === "confirmed" ? "confirmed" : "declined");
         await refreshStateFromSupabase();
+        await sendAttendanceResponseOwnerEmail(booking);
       } else {
         booking.attendance_confirmation_status = response === "confirmed" ? "confirmed" : "declined";
         booking.attendance_confirmation_answered_at = new Date().toISOString();
@@ -3919,25 +3810,16 @@ myBookingsList.addEventListener("click", async (event) => {
       saveState();
       rerenderAll();
     }
-    void sendCancelledBookingEmails(booking);
+    await sendCancelledBookingEmails(booking);
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו לבטל את התור.", { variant: "error" });
-  }
-});
-
-window.addEventListener("storage", (event) => {
-  if (event.key === LOCAL_STORAGE_KEY) {
-    syncStateFromStorage();
   }
 });
 
 async function initializeApp() {
   try {
     if (!supabaseEnabled) {
-      restoreRememberedCustomerSession();
-      notificationCenter?.rememberCurrentNotifications();
-      rerenderAll();
-      showWizardStep(1);
+      showPublicSupabaseError(new Error("לא הצלחנו לטעון את החיבור המאובטח למערכת. נסו לרענן את הדף בעוד רגע."));
       return;
     }
 
@@ -3954,6 +3836,9 @@ async function initializeApp() {
     }
 
     supabaseApi.onAuthStateChange(async (event) => {
+      if (event === "INITIAL_SESSION") {
+        return;
+      }
       if (event === "PASSWORD_RECOVERY") {
         clearRememberedCustomerSession();
         session.role = null;

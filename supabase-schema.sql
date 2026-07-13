@@ -72,6 +72,7 @@ create table if not exists bookings (
 alter table bookings add column if not exists service_ids jsonb not null default '[]'::jsonb;
 alter table bookings add column if not exists service_names jsonb not null default '[]'::jsonb;
 alter table bookings add column if not exists customer_auth_user_id uuid references auth.users(id) on delete set null;
+alter table bookings add column if not exists customer_email text;
 alter table bookings add column if not exists replaces_booking_id uuid references bookings(id) on delete set null;
 alter table bookings add column if not exists hidden_for_customer boolean not null default false;
 alter table bookings add column if not exists arrival_status text not null default '' check (arrival_status in ('', 'waiting', 'arrived', 'finished', 'no_show'));
@@ -93,7 +94,6 @@ create table if not exists customers (
   last_name text not null default '',
   phone text not null unique,
   email text,
-  password text not null default '',
   owner_note text not null default '',
   is_blocked boolean not null default false,
   blocked_reason text not null default '',

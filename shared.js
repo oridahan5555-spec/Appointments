@@ -32,28 +32,6 @@ function cssImageUrl(value) {
   return safeUrl ? `url("${safeUrl.replace(/"/g, "%22")}")` : "";
 }
 
-async function hashPassword(password) {
-  const buffer = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(String(password || ""))
-  );
-  return Array.from(new Uint8Array(buffer))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function verifyStoredPassword(password, storedPassword, onUpgrade) {
-  const stored = String(storedPassword || "");
-  const inputHash = await hashPassword(password);
-  const matches = stored.length === 64 ? inputHash === stored : String(password) === stored;
-
-  if (matches && stored.length !== 64 && typeof onUpgrade === "function") {
-    onUpgrade(inputHash);
-  }
-
-  return matches;
-}
-
 function normalizeHexColor(value, fallback = "#b25fd1") {
   const color = String(value || "").trim().toLowerCase();
   return /^#[0-9a-f]{6}$/.test(color) ? color : fallback;
@@ -261,12 +239,21 @@ function isSamePhone(left, right) {
   return normalizePhoneNumber(left) === normalizePhoneNumber(right);
 }
 
-function isSellerRemembered() {
-  return localStorage.getItem(SELLER_SESSION_KEY) === "1" || sessionStorage.getItem(SELLER_SESSION_KEY) === "1";
-}
+function isSlotBlocked(dateValue, timeValue, durationMinutes = 1) {
+  const candidateStart = parseTimeToMinutes(String(timeValue).slice(0, 5));
+  const candidateEnd = candidateStart + Math.max(Number(durationMinutes || 1), 1);
+  const workDay = findWorkingHoursForDate(dateValue);
+  const blockedDuration = Math.max(Number(workDay?.slot_interval_minutes || 30), 1);
 
-function isSlotBlocked(dateValue, timeValue) {
-  return state.blockedSlots.some((slot) => slot.blocked_date === dateValue && slot.blocked_time === timeValue);
+  return state.blockedSlots.some((slot) => {
+    if (slot.blocked_date !== dateValue) {
+      return false;
+    }
+
+    const blockedStart = parseTimeToMinutes(String(slot.blocked_time).slice(0, 5));
+    const blockedEnd = blockedStart + blockedDuration;
+    return candidateStart < blockedEnd && blockedStart < candidateEnd;
+  });
 }
 
 function localDateValue(date) {
@@ -375,7 +362,13 @@ function normalizeSocialUrl(value) {
   if (!trimmed || trimmed === "https://instagram.com") {
     return "";
   }
-  return trimmed;
+
+  try {
+    const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch (error) {
+    return "";
+  }
 }
 
 function normalizeSpecialHours(specialHours) {
@@ -430,7 +423,6 @@ function normalizeUsers(users) {
       lastName: String(user?.lastName || "").trim(),
       phone: String(user?.phone || "").trim(),
       email: String(user?.email || "").trim().toLowerCase(),
-      password: String(user?.password || ""),
       owner_note: String(user?.owner_note || "").trim(),
       is_blocked: Boolean(user?.is_blocked),
       blocked_reason: String(user?.blocked_reason || "").trim(),
@@ -488,10 +480,6 @@ function parseTimeToMinutes(value) {
   return hours * 60 + minutes;
 }
 
-function rememberSellerSession() {
-  localStorage.setItem(SELLER_SESSION_KEY, "1");
-}
-
 function startRejectUndo(bookingId, previousStatus) {
   clearRejectUndo(false);
   uiState.rejectUndoBookingId = bookingId;
@@ -499,13 +487,6 @@ function startRejectUndo(bookingId, previousStatus) {
   uiState.rejectUndoTimeoutId = setTimeout(() => {
     clearRejectUndo(true);
   }, REJECT_UNDO_WINDOW_MS);
-}
-
-function syncStateFromStorage() {
-  const freshState = loadState();
-  Object.assign(state, freshState);
-  rerenderAll();
-  notificationCenter?.showNewBrowserNotifications();
 }
 
 function todayDate() {

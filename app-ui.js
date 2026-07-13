@@ -76,7 +76,7 @@
       return "יש כרגע בעיית תקשורת. נסו שוב בעוד רגע.";
     }
 
-    return original;
+    return "הפעולה לא הצליחה כרגע. נסו שוב בעוד רגע.";
   }
 
   function toast(message, options = {}) {

@@ -52,8 +52,7 @@ const DEFAULT_DATA = {
     }
   },
   sellerCredentials: {
-    username: "admin",
-    password: "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
+    username: "admin"
   },
   services: [
     { id: "service-1", category: "קטגוריה ראשית", name: "שירות לדוגמה 1", price: 150, duration_minutes: 60 },
@@ -236,60 +235,14 @@ function focusOwnerBookingFromUrl() {
 
 function loadState() {
   const defaults = structuredClone(DEFAULT_DATA);
-
-
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY) || localStorage.getItem("booking_app_local_working_v1");
-    if (!raw) {
-      return defaults;
-    }
-
-    const parsed = JSON.parse(raw);
-    const loadedState = {
-      business: normalizeBusiness({ ...defaults.business, ...(parsed.business || {}) }),
-      sellerCredentials: {
-        ...defaults.sellerCredentials,
-        ...(parsed.sellerCredentials || {})
-      },
-      services: normalizeServices(Array.isArray(parsed.services) && parsed.services.length ? parsed.services : defaults.services),
-      staff: Array.isArray(parsed.staff) && parsed.staff.length ? parsed.staff : defaults.staff,
-      workingHours: Array.isArray(parsed.workingHours) && parsed.workingHours.length ? parsed.workingHours : defaults.workingHours,
-      specialHours: normalizeSpecialHours(parsed.specialHours),
-      blockedSlots: normalizeBlockedSlots(parsed.blockedSlots),
-      waitlistEntries: normalizeWaitlistEntries(parsed.waitlistEntries),
-      bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
-      notifications: normalizeNotifications(parsed.notifications),
-      users: Array.isArray(parsed.users) ? parsed.users : [],
-      customerNotes: normalizeCustomerNotes(parsed.customerNotes)
-    };
-
-    loadedState.staff = normalizeStaff(loadedState.staff);
-    loadedState.bookings = normalizeBookings(loadedState.bookings, loadedState.staff, loadedState.services);
-    loadedState.users = normalizeUsers(loadedState.users);
-    return loadedState;
-  } catch (error) {
-    return defaults;
-  }
+  localStorage.removeItem(LOCAL_STORAGE_KEY);
+  localStorage.removeItem("booking_app_local_working_v1");
+  return defaults;
 }
 
 function saveState() {
-  localStorage.setItem(
-    LOCAL_STORAGE_KEY,
-    JSON.stringify({
-      business: state.business,
-      sellerCredentials: state.sellerCredentials,
-      services: state.services,
-      staff: state.staff,
-      workingHours: state.workingHours,
-      specialHours: state.specialHours,
-      blockedSlots: state.blockedSlots,
-      waitlistEntries: state.waitlistEntries,
-      bookings: state.bookings,
-      notifications: state.notifications,
-      users: state.users,
-      customerNotes: state.customerNotes
-    })
-  );
+  localStorage.removeItem(LOCAL_STORAGE_KEY);
+  localStorage.removeItem("booking_app_local_working_v1");
 
   if (supabaseEnabled && ownerLoadedFromSupabase && isOwnerNotificationActive() && !isHydratingOwnerState) {
     return supabaseApi.syncOwnerState(state).then(() => true).catch((error) => {
@@ -372,8 +325,15 @@ async function sendCustomerBookingEmail(type, booking, successMessage) {
 async function refreshOwnerEmailStatus() {
   if (!ownerEmailStatus || !appEmail) return;
   const status = await appEmail.getStatus();
-  ownerEmailStatus.textContent = status.configured ? "אימייל מוגדר בשרת" : "אימייל לא מוגדר עדיין";
-  ownerEmailStatus.classList.toggle("status-card-approved", status.configured);
+  const ownerEmail = String(state.business.owner_email || "").trim();
+  const recipientConfigured = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail);
+  const ready = status.configured && recipientConfigured;
+  ownerEmailStatus.textContent = !status.configured
+    ? "שירות האימייל עדיין לא מוגדר בשרת"
+    : recipientConfigured
+      ? `התראות העסק יישלחו אל ${ownerEmail}`
+      : "צריך לשמור כתובת אימייל תקינה לקבלת התראות";
+  ownerEmailStatus.classList.toggle("status-card-approved", ready);
 }
 
 function clearOwnerRealtimeSubscriptions() {
@@ -703,6 +663,14 @@ function toggleCustomerBlocked(phone) {
 }
 
 function readFileAsDataUrl(file) {
+  const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+  if (!allowedTypes.has(String(file?.type || "").toLowerCase())) {
+    return Promise.reject(new Error("אפשר להעלות רק תמונת JPG, PNG או WebP."));
+  }
+  if (Number(file?.size || 0) > 2 * 1024 * 1024) {
+    return Promise.reject(new Error("התמונה גדולה מדי. אפשר להעלות תמונה עד 2MB."));
+  }
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ""));
@@ -1938,23 +1906,16 @@ function isPasswordRecoveryUrl() {
 
 ownerLoginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = event.submitter instanceof HTMLButtonElement
+    ? event.submitter
+    : ownerLoginForm.querySelector('button[type="submit"]');
+  if (submitButton?.disabled) return;
   const formData = new FormData(ownerLoginForm);
   const username = String(formData.get("username")).trim();
   const password = String(formData.get("password"));
 
   if (!supabaseEnabled) {
-    const validPassword = username === state.sellerCredentials.username
-      && await verifyStoredPassword(password, state.sellerCredentials.password, (passwordHash) => {
-        state.sellerCredentials.password = passwordHash;
-        saveState();
-      });
-    if (!validPassword) {
-      appUi.toast("פרטי הכניסה לא תקינים.", { variant: "error" });
-      return;
-    }
-    rememberSellerSession();
-    sessionStorage.setItem(SELLER_SESSION_KEY, "1");
-    showOwnerLayout();
+    appUi.toast("לא ניתן להיכנס לניהול בלי חיבור מאובטח ל-Supabase Auth.", { variant: "error" });
     return;
   }
 
@@ -1963,6 +1924,7 @@ ownerLoginForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (submitButton) submitButton.disabled = true;
   try {
     await supabaseApi.signInOwner({ username, password });
     const currentUser = await supabaseApi.getCurrentUser();
@@ -1974,33 +1936,41 @@ ownerLoginForm.addEventListener("submit", async (event) => {
       throw new Error("החשבון הזה לא מחובר להרשאת ניהול של העסק.");
     }
     setOwnerAccessMessage("");
-    rememberSellerSession();
-    sessionStorage.setItem(SELLER_SESSION_KEY, "1");
     await ensureOwnerSupabaseBootstrap();
     await refreshOwnerStateFromSupabase();
     setupOwnerRealtimeSubscriptions();
     showOwnerLayout();
   } catch (error) {
     appUi.toast(error?.message || "פרטי הכניסה לא תקינים.", { variant: "error" });
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
 });
 
 ownerForgotPasswordButton?.addEventListener("click", async () => {
+  if (ownerForgotPasswordButton.disabled) return;
   if (!supabaseEnabled) {
     appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
     return;
   }
 
+  ownerForgotPasswordButton.disabled = true;
   try {
     await supabaseApi.sendOwnerPasswordReset();
     appUi.toast("שלחנו קישור איפוס סיסמה לכתובת של בעל העסק.", { variant: "success" });
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו לשלוח קישור איפוס סיסמה.", { variant: "error" });
+  } finally {
+    ownerForgotPasswordButton.disabled = false;
   }
 });
 
 ownerRecoveryForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = event.submitter instanceof HTMLButtonElement
+    ? event.submitter
+    : ownerRecoveryForm.querySelector('button[type="submit"]');
+  if (submitButton?.disabled) return;
 
   if (!supabaseEnabled) {
     appUi.toast("חיבור Supabase עדיין לא זמין בדף הזה.", { variant: "error" });
@@ -2021,6 +1991,7 @@ ownerRecoveryForm?.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (submitButton) submitButton.disabled = true;
   try {
     await supabaseApi.updateOwnerPassword(newPassword);
     appUi.toast("הסיסמה עודכנה, אפשר להתחבר", { variant: "success" });
@@ -2030,6 +2001,8 @@ ownerRecoveryForm?.addEventListener("submit", async (event) => {
     showOwnerLogin();
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו לעדכן את הסיסמה.", { variant: "error" });
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
 });
 ownerLogoutButton.addEventListener("click", async () => {
@@ -2693,12 +2666,13 @@ businessForm.addEventListener("change", async (event) => {
       ownerAvatarPreview.style.backgroundImage = cssImageUrl(imageDataUrl);
     }
   } catch (error) {
-    appUi.toast("לא הצלחנו לקרוא את קובץ התמונה. נסי לבחור קובץ אחר.", { variant: "error" });
+    appUi.toast(error?.message || "לא הצלחנו לקרוא את קובץ התמונה. נסי לבחור קובץ אחר.", { variant: "error" });
   }
 });
 
 businessForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
 
   const ownerEmail = String(businessForm.elements.ownerEmail?.value || "").trim().toLowerCase();
   if (!ownerEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) {
@@ -2720,25 +2694,34 @@ businessForm.addEventListener("submit", async (event) => {
       file: businessForm.elements.profileImageFile.files?.[0]
     });
   } catch (error) {
-    appUi.toast("לא הצלחנו לשמור את התמונות. נסי שוב עם קובץ אחר.", { variant: "error" });
+    appUi.toast(error?.message || "לא הצלחנו לשמור את התמונות. נסי שוב עם קובץ אחר.", { variant: "error" });
     return;
   }
 
-  state.business = {
-    ...state.business,
-    name: String(businessForm.elements.name.value).trim(),
-    description: String(businessForm.elements.description.value).trim(),
-    address: String(businessForm.elements.address.value).trim(),
-    phone: String(businessForm.elements.phone.value).trim(),
-    owner_email: String(businessForm.elements.ownerEmail.value).trim().toLowerCase(),
-    instagram_url: normalizeSocialUrl(businessForm.elements.instagramUrl.value),
-    preparation_message: String(businessForm.elements.preparationMessage.value).trim(),
-    features: getBusinessFeaturesFromForm(),
-    cover_image: coverImage,
-    profile_image: profileImage
-  };
-  saveState();
-  rerenderAll();
+  if (submitButton) submitButton.disabled = true;
+  try {
+    state.business = {
+      ...state.business,
+      name: String(businessForm.elements.name.value).trim(),
+      description: String(businessForm.elements.description.value).trim(),
+      address: String(businessForm.elements.address.value).trim(),
+      phone: String(businessForm.elements.phone.value).trim(),
+      owner_email: String(businessForm.elements.ownerEmail.value).trim().toLowerCase(),
+      instagram_url: normalizeSocialUrl(businessForm.elements.instagramUrl.value),
+      preparation_message: String(businessForm.elements.preparationMessage.value).trim(),
+      features: getBusinessFeaturesFromForm(),
+      cover_image: coverImage,
+      profile_image: profileImage
+    };
+    const saved = await saveState();
+    rerenderAll();
+    if (saved) {
+      appUi.toast("פרטי העסק נשמרו ויסתנכרנו עם השרת.", { variant: "success" });
+      await refreshOwnerEmailStatus();
+    }
+  } finally {
+    if (submitButton) submitButton.disabled = false;
+  }
 });
 
 sellerCredentialsForm.addEventListener("submit", async (event) => {
@@ -2761,8 +2744,8 @@ sellerCredentialsForm.addEventListener("submit", async (event) => {
       if (password.trim()) {
         await supabaseApi.updateOwnerCredentials({ password });
       }
-    } else if (!supabaseEnabled && password) {
-      state.sellerCredentials.password = await hashPassword(password);
+    } else if (!supabaseEnabled) {
+      throw new Error("לא ניתן לשמור סיסמה בדפדפן. צריך חיבור פעיל ל-Supabase Auth.");
     }
     state.sellerCredentials.username = supabaseEnabled ? OWNER_LOGIN_NAME : username;
     sellerCredentialsForm.elements.password.value = "";
@@ -2867,12 +2850,6 @@ hoursForm.addEventListener("submit", (event) => {
   rerenderAll();
 });
 
-window.addEventListener("storage", (event) => {
-  if (event.key === LOCAL_STORAGE_KEY) {
-    syncStateFromStorage();
-  }
-});
-
 async function initializeOwnerPage() {
   if (isPasswordRecoveryUrl()) {
     showOwnerRecovery();
@@ -2882,6 +2859,9 @@ async function initializeOwnerPage() {
 
   if (supabaseEnabled) {
     supabaseApi.onAuthStateChange(async (event, session) => {
+      if (event === "INITIAL_SESSION") {
+        return;
+      }
       if (event === "PASSWORD_RECOVERY") {
         ownerSession.authUserId = session?.user?.id || null;
         showOwnerRecovery();
@@ -2916,9 +2896,8 @@ async function initializeOwnerPage() {
   }
 
   if (!supabaseEnabled) {
-    if (isSellerRemembered()) {
-      showOwnerLayout();
-    }
+    setOwnerAccessMessage("לא הצלחנו לטעון את החיבור המאובטח לניהול. נסו לרענן את הדף בעוד רגע.", true);
+    showOwnerLogin();
     return;
   }
 
@@ -2937,8 +2916,6 @@ async function initializeOwnerPage() {
     return;
   }
 
-  rememberSellerSession();
-  sessionStorage.setItem(SELLER_SESSION_KEY, "1");
   await ensureOwnerSupabaseBootstrap();
   try {
     await refreshOwnerStateFromSupabase();
@@ -2951,6 +2928,14 @@ async function initializeOwnerPage() {
   }
 }
 
-void initializeOwnerPage();
+void initializeOwnerPage()
+  .catch((error) => {
+    clearOwnerRealtimeSubscriptions();
+    setOwnerAccessMessage(String(error?.message || "לא הצלחנו לבדוק את הרשאת הניהול."), true);
+    showOwnerLogin();
+  })
+  .finally(() => {
+    document.documentElement.classList.remove("app-booting");
+  });
 
 

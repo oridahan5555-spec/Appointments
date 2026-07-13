@@ -1,25 +1,17 @@
 begin;
 
-alter table public.customers
-  add column if not exists email text;
+alter table public.customers add column if not exists email text;
 
-update public.customers
-set email = null
-where nullif(trim(email), '') is null;
+update public.customers set email = null where nullif(trim(email), '') is null;
 
 create unique index if not exists customers_email_unique_idx
-on public.customers (lower(email))
-where email is not null;
+on public.customers (lower(email)) where email is not null;
+create index if not exists customers_auth_user_id_idx on public.customers (auth_user_id);
+create index if not exists bookings_customer_auth_user_id_idx on public.bookings (customer_auth_user_id);
+create index if not exists waitlist_entries_customer_auth_user_id_idx on public.waitlist_entries (customer_auth_user_id);
 
-create index if not exists customers_auth_user_id_idx
-on public.customers (auth_user_id);
-
-create index if not exists bookings_customer_auth_user_id_idx
-on public.bookings (customer_auth_user_id);
-
-create index if not exists waitlist_entries_customer_auth_user_id_idx
-on public.waitlist_entries (customer_auth_user_id);
-
+-- Existing customer records are linked only by the authenticated account's
+-- email. Knowing a phone number alone is not proof of account ownership.
 create or replace function public.claim_customer_account(
   p_first_name text default '',
   p_last_name text default '',
@@ -29,107 +21,85 @@ create or replace function public.claim_customer_account(
 returns uuid
 language plpgsql
 security definer
-set search_path = public, auth
+set search_path = pg_catalog, public, auth
 as $$
 declare
-  v_auth_user_id uuid;
+  v_auth_user_id uuid := auth.uid();
   v_phone text;
   v_email text;
   v_first_name text;
   v_last_name text;
-  v_customer_id uuid;
+  v_customer public.customers%rowtype;
 begin
-  v_auth_user_id := auth.uid();
-  if v_auth_user_id is null then
-    raise exception 'AUTH_REQUIRED';
-  end if;
+  if v_auth_user_id is null then raise exception 'AUTH_REQUIRED'; end if;
 
   v_phone := nullif(regexp_replace(coalesce(p_phone, ''), '[^0-9+]', '', 'g'), '');
-  v_email := lower(nullif(trim(coalesce(p_email, auth.jwt() ->> 'email', '')), ''));
-  v_first_name := trim(coalesce(p_first_name, coalesce(auth.jwt() -> 'user_metadata' ->> 'first_name', '')));
-  v_last_name := trim(coalesce(p_last_name, coalesce(auth.jwt() -> 'user_metadata' ->> 'last_name', '')));
+  v_email := lower(nullif(trim(coalesce(auth.jwt() ->> 'email', '')), ''));
+  v_first_name := left(trim(coalesce(p_first_name, auth.jwt() -> 'user_metadata' ->> 'first_name', '')), 100);
+  v_last_name := left(trim(coalesce(p_last_name, auth.jwt() -> 'user_metadata' ->> 'last_name', '')), 100);
 
-  if v_phone is null and v_email is null then
-    raise exception 'PHONE_OR_EMAIL_REQUIRED';
+  if v_email is null then raise exception 'VERIFIED_EMAIL_REQUIRED'; end if;
+  if nullif(trim(coalesce(p_email, '')), '') is not null and lower(trim(p_email)) <> v_email then
+    raise exception 'EMAIL_MISMATCH';
   end if;
 
-  select c.id
-  into v_customer_id
+  select c.* into v_customer
   from public.customers c
   where c.auth_user_id = v_auth_user_id
-     or (v_phone is not null and c.phone = v_phone)
-     or (v_email is not null and lower(coalesce(c.email, '')) = v_email)
-  order by
-    case when c.auth_user_id = v_auth_user_id then 0 else 1 end,
-    case when v_phone is not null and c.phone = v_phone then 0 else 1 end,
-    case when v_email is not null and lower(coalesce(c.email, '')) = v_email then 0 else 1 end
-  limit 1;
+     or lower(coalesce(c.email, '')) = v_email
+  order by case when c.auth_user_id = v_auth_user_id then 0 else 1 end
+  limit 1
+  for update;
 
-  if v_customer_id is not null then
-    if exists (
-      select 1
-      from public.customers c
-      where c.id = v_customer_id
-        and c.auth_user_id is not null
-        and c.auth_user_id <> v_auth_user_id
-    ) then
+  if found then
+    v_phone := coalesce(v_phone, nullif(regexp_replace(coalesce(v_customer.phone, ''), '[^0-9+]', '', 'g'), ''));
+    if v_phone is null or length(regexp_replace(v_phone, '[^0-9]', '', 'g')) not between 9 and 15 then
+      raise exception 'VALID_PHONE_REQUIRED';
+    end if;
+    if v_customer.auth_user_id is not null and v_customer.auth_user_id <> v_auth_user_id then
       raise exception 'CUSTOMER_ALREADY_LINKED';
+    end if;
+    if exists (select 1 from public.customers c where c.phone = v_phone and c.id <> v_customer.id) then
+      raise exception 'PHONE_ALREADY_REGISTERED';
     end if;
 
     update public.customers
-    set
-      auth_user_id = v_auth_user_id,
-      first_name = coalesce(nullif(v_first_name, ''), first_name),
-      last_name = coalesce(nullif(v_last_name, ''), last_name),
-      phone = coalesce(v_phone, phone),
-      email = coalesce(v_email, email)
-    where id = v_customer_id;
-  else
-    if v_phone is null then
-      raise exception 'PHONE_REQUIRED_TO_CREATE_CUSTOMER';
-    end if;
+    set auth_user_id = v_auth_user_id,
+        first_name = coalesce(nullif(v_first_name, ''), first_name),
+        last_name = coalesce(nullif(v_last_name, ''), last_name),
+        phone = v_phone,
+        email = v_email,
+        updated_at = now()
+    where id = v_customer.id;
 
-    insert into public.customers (
-      auth_user_id,
-      first_name,
-      last_name,
-      phone,
-      email
-    )
-    values (
-      v_auth_user_id,
-      coalesce(v_first_name, ''),
-      coalesce(v_last_name, ''),
-      coalesce(v_phone, ''),
-      v_email
-    )
-    returning id into v_customer_id;
-  end if;
-
-  if v_phone is not null then
     update public.bookings
-    set
-      customer_auth_user_id = v_auth_user_id,
-      customer_first_name = coalesce(nullif(v_first_name, ''), customer_first_name),
-      customer_last_name = coalesce(nullif(v_last_name, ''), customer_last_name),
-      customer_phone = v_phone
-    where customer_phone = v_phone
-      and (customer_auth_user_id is null or customer_auth_user_id = v_auth_user_id);
+    set customer_auth_user_id = v_auth_user_id,
+        customer_email = v_email,
+        updated_at = now()
+    where customer_auth_user_id is null and customer_phone = v_customer.phone;
 
     update public.waitlist_entries
-    set
-      customer_auth_user_id = v_auth_user_id,
-      customer_phone = v_phone,
-      customer_name = trim(concat(coalesce(nullif(v_first_name, ''), ''), ' ', coalesce(nullif(v_last_name, ''), '')))
-    where customer_phone = v_phone
-      and (customer_auth_user_id is null or customer_auth_user_id = v_auth_user_id);
+    set customer_auth_user_id = v_auth_user_id
+    where customer_auth_user_id is null and customer_phone = v_customer.phone;
 
     update public.notifications
     set user_id = v_auth_user_id::text
-    where user_id = v_phone;
+    where user_id = v_customer.phone;
+
+    return v_customer.id;
   end if;
 
-  return v_customer_id;
+  if v_phone is null or length(regexp_replace(v_phone, '[^0-9]', '', 'g')) not between 9 and 15 then
+    raise exception 'VALID_PHONE_REQUIRED';
+  end if;
+  if exists (select 1 from public.customers c where c.phone = v_phone) then
+    raise exception 'PHONE_ALREADY_REGISTERED';
+  end if;
+
+  insert into public.customers (auth_user_id, first_name, last_name, phone, email)
+  values (v_auth_user_id, v_first_name, v_last_name, v_phone, v_email)
+  returning id into v_customer.id;
+  return v_customer.id;
 end;
 $$;
 

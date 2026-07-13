@@ -3,6 +3,15 @@
 
   const activeEvents = new Set();
 
+  async function getAccessToken() {
+    try {
+      const session = await global.AppSupabase?.getSession?.();
+      return String(session?.access_token || "");
+    } catch {
+      return "";
+    }
+  }
+
   async function sendEmailNotification(type, payload = {}, options = {}) {
     const eventKey = String(options.eventKey || "").trim();
     if (eventKey && activeEvents.has(eventKey)) {
@@ -14,14 +23,16 @@
     if (eventKey) activeEvents.add(eventKey);
 
     try {
+      const accessToken = await getAccessToken();
       const response = await fetch("/api/send-email", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+        },
         body: JSON.stringify({
           type,
-          to: options.to || undefined,
-          eventKey: eventKey || undefined,
-          payload
+          bookingId: String(payload?.bookingId || "").trim() || undefined
         }),
         signal: controller.signal
       });

@@ -7,6 +7,37 @@
   const ownerPasswordResetRedirect = String(config.ownerPasswordResetRedirect || "").trim();
   const hasLibrary = Boolean(window.supabase?.createClient);
   const isConfigured = Boolean(url && anonKey && hasLibrary);
+  const REQUEST_TIMEOUT_MS = 15_000;
+
+  async function fetchWithTimeout(input, init = {}) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, REQUEST_TIMEOUT_MS);
+    const upstreamSignal = init.signal;
+    const abortFromUpstream = () => controller.abort();
+
+    if (upstreamSignal?.aborted) {
+      controller.abort();
+    } else {
+      upstreamSignal?.addEventListener?.("abort", abortFromUpstream, { once: true });
+    }
+
+    try {
+      return await window.fetch(input, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (timedOut) {
+        throw new Error("החיבור לשרת התארך מדי. נסו שוב בעוד רגע.");
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+      upstreamSignal?.removeEventListener?.("abort", abortFromUpstream);
+    }
+  }
+
   const client = isConfigured
     ? window.supabase.createClient(url, anonKey, {
         auth: {
@@ -18,6 +49,9 @@
           params: {
             eventsPerSecond: 5
           }
+        },
+        global: {
+          fetch: fetchWithTimeout
         }
       })
     : null;
@@ -30,6 +64,7 @@
     blockedSlots: [],
     bookings: []
   };
+  const PUBLIC_BUSINESS_COLUMNS = "id,name,description,address,phone,instagram_url,features,cover_image,profile_image,preparation_message,created_at,updated_at";
 
   let ownerSyncPromise = Promise.resolve();
 
@@ -43,11 +78,6 @@
 
   function normalizePhone(phone) {
     return String(phone || "").replace(/[^\d+]/g, "");
-  }
-
-  function customerEmailFromPhone(phone) {
-    const normalized = normalizePhone(phone);
-    return normalized ? `${normalized}@customers.local` : "";
   }
 
   function createUuid() {
@@ -199,7 +229,6 @@
       lastName: row.last_name || "",
       phone: row.phone || "",
       email: row.email || "",
-      password: "",
       owner_note: row.owner_note || "",
       is_blocked: Boolean(row.is_blocked),
       blocked_reason: row.blocked_reason || "",
@@ -487,29 +516,17 @@
     });
 
     if (error) {
-      if (String(error.message || "").includes("CUSTOMER_ALREADY_LINKED")) {
+      const message = String(error.message || "");
+      if (message.includes("CUSTOMER_ALREADY_LINKED") || message.includes("PHONE_ALREADY_REGISTERED")) {
         throw new Error("הטלפון או האימייל כבר שייכים לחשבון לקוחה אחר.");
       }
-      if (String(error.message || "").includes("PHONE_REQUIRED_TO_CREATE_CUSTOMER")) {
-        throw new Error("התחברת, אבל חסרים פרטי לקוחה כדי להשלים את החשבון. מלאי את הפרטים בטופס התור ונסי שוב.");
+      if (message.includes("PHONE_REQUIRED_TO_CREATE_CUSTOMER") || message.includes("VALID_PHONE_REQUIRED")) {
+        throw new Error("התחברת, אבל חסר מספר טלפון בפרופיל. צרי קשר עם בעלת העסק כדי להשלים את הפרטים.");
       }
       throw error;
     }
 
     return data;
-  }
-
-  async function updateCustomerEmail(email) {
-    const supabase = ensureClient();
-    const user = await getCurrentUser();
-    const normalizedEmail = String(email || "").trim().toLowerCase();
-    if (!user || !normalizedEmail) return;
-
-    const { error } = await supabase
-      .from("customers")
-      .update({ email: normalizedEmail })
-      .eq("auth_user_id", user.id);
-    if (error) throw error;
   }
 
   async function registerCustomer(payload) {
@@ -598,8 +615,8 @@
       });
     } catch (claimError) {
       const claimMessage = String(claimError?.message || "");
-      if (claimMessage.includes("PHONE_REQUIRED_TO_CREATE_CUSTOMER") || claimMessage.includes("חסרים פרטי")) {
-        throw new Error("התחברת, אבל צריך גם טלפון כדי לקשר את החשבון לפרטי לקוחה. מלאי טלפון במסך הכניסה ונסי שוב.");
+      if (claimMessage.includes("PHONE_REQUIRED_TO_CREATE_CUSTOMER") || claimMessage.includes("VALID_PHONE_REQUIRED") || claimMessage.includes("חסרים פרטי")) {
+        throw new Error("התחברת, אבל חסר מספר טלפון בפרופיל. צרי קשר עם בעלת העסק כדי להשלים את הפרטים.");
       }
       if (claimMessage.includes("CUSTOMER_ALREADY_LINKED") || claimMessage.includes("כבר שייכים")) {
         throw new Error("הטלפון או האימייל כבר מחוברים לחשבון לקוחה אחר. אם זה החשבון שלך, נסי להתחבר עם האימייל של אותו חשבון או השתמשי בשכחתי סיסמה.");
@@ -635,10 +652,10 @@
   async function loadPublicState() {
     const supabase = ensureClient();
     const [businessResponse, servicesResponse, hoursResponse, specialHoursResponse, blockedSlotsResponse, slotsResponse] = await Promise.all([
-      supabase.from("business").select("*").order("created_at", { ascending: true }).limit(1).maybeSingle(),
+      supabase.from("business").select(PUBLIC_BUSINESS_COLUMNS).order("created_at", { ascending: true }).limit(1).maybeSingle(),
       supabase.from("services").select("*").eq("is_active", true).order("display_order", { ascending: true }),
       supabase.from("working_hours").select("*").order("day_of_week", { ascending: true }),
-      supabase.from("special_hours").select("*").order("special_date", { ascending: true }),
+      supabase.rpc("get_public_special_hours"),
       supabase.rpc("get_public_blocked_slots"),
       supabase.rpc("get_public_booking_slots")
     ]);
@@ -704,17 +721,19 @@
       throw new Error("צריך להתחבר לחשבון ניהול לפני טעינת נתוני העסק.");
     }
 
-    const [publicState, customersResponse, bookingsResponse, notificationsResponse, waitlistResponse, blockedSlotsResponse, ownerResponse] = await Promise.all([
+    const [publicState, customersResponse, bookingsResponse, notificationsResponse, waitlistResponse, specialHoursResponse, blockedSlotsResponse, ownerResponse, ownerEmailResponse] = await Promise.all([
       loadPublicState(),
       supabase.from("customers").select("*").order("created_at", { ascending: true }),
       supabase.from("bookings").select("*").order("booking_date", { ascending: true }).order("booking_time", { ascending: true }),
       supabase.from("notifications").select("*").order("created_at", { ascending: false }),
       supabase.from("waitlist_entries").select("*").order("created_at", { ascending: false }),
+      supabase.from("special_hours").select("*").order("special_date", { ascending: true }),
       supabase.from("blocked_slots").select("*").order("blocked_date", { ascending: true }).order("blocked_time", { ascending: true }),
-      supabase.from("owner_profiles").select("id").eq("id", user.id).maybeSingle()
+      supabase.from("owner_profiles").select("id").eq("id", user.id).maybeSingle(),
+      supabase.rpc("get_owner_email_context")
     ]);
 
-    [customersResponse, bookingsResponse, notificationsResponse, waitlistResponse, blockedSlotsResponse, ownerResponse].forEach((response) => {
+    [customersResponse, bookingsResponse, notificationsResponse, waitlistResponse, specialHoursResponse, blockedSlotsResponse, ownerResponse, ownerEmailResponse].forEach((response) => {
       if (response.error) {
         throw response.error;
       }
@@ -724,10 +743,15 @@
 
     return {
       ...publicState,
+      business: {
+        ...publicState.business,
+        owner_email: String(ownerEmailResponse.data?.owner_email || "").trim().toLowerCase()
+      },
       users: (customersResponse.data || []).map(mapCustomerRowFromDb),
       bookings: (bookingsResponse.data || []).map((row) => mapBookingFromDb(row, customersMap.get(normalizePhone(row.customer_phone)))),
       notifications: (notificationsResponse.data || []).map(mapNotificationFromDb),
       waitlistEntries: (waitlistResponse.data || []).map(mapWaitlistFromDb),
+      specialHours: mapSpecialHoursFromDb(specialHoursResponse.data || []),
       blockedSlots: mapBlockedSlotsFromDb(blockedSlotsResponse.data || []),
       owner: ownerResponse.data || null
     };
@@ -845,7 +869,7 @@
         }
       }
 
-      const { data: businessRow, error: businessError } = await supabase.from("business").upsert(businessPayload).select("*").single();
+      const { error: businessError } = await supabase.from("business").upsert(businessPayload);
       if (businessError) throw businessError;
 
       await replaceOwnedRows("services", servicesPayload);
@@ -876,22 +900,10 @@
         if (error) throw error;
       }
 
-      return businessRow;
+      return businessPayload;
     });
 
     return ownerSyncPromise;
-  }
-
-  async function bootstrapOwnerDataFromLocal(snapshot) {
-    const supabase = ensureClient();
-    const { count, error } = await supabase.from("services").select("*", { count: "exact", head: true });
-    if (error) throw error;
-    if (Number(count || 0) > 0) {
-      return false;
-    }
-
-    await syncOwnerState(snapshot);
-    return true;
   }
 
   function subscribe(table, callback, filter) {
@@ -938,7 +950,6 @@
     updateOwnerPassword,
     signOut,
     claimCustomerAccount,
-    updateCustomerEmail,
     registerCustomer,
     signInCustomer,
     updateOwnerCredentials,
@@ -957,12 +968,9 @@
     joinWaitlist,
     syncOwnerState,
     deleteOwnerRow,
-    bootstrapOwnerDataFromLocal,
     subscribe,
     onAuthStateChange,
     normalizePhone,
-    customerEmailFromPhone
-    ,
     getOwnerLoginName: () => ownerLoginName,
     getOwnerEmail: () => ownerEmail
   };

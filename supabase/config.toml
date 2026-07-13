@@ -1,5 +1,1 @@
-[functions.send-booking-emails]
-verify_jwt = false
-
-[functions.booking-email-action]
-verify_jwt = false
+# Transactional email is handled only by Vercel /api/send-email.
