@@ -596,6 +596,14 @@ function prepareCustomerLoginAfterSignup(email) {
 function getCustomerSignupErrorMessage(error) {
   const message = String(error?.message || "").toLowerCase();
 
+  if (error?.code === "CUSTOMER_ACCOUNT_CONFLICT") {
+    return {
+      text: "הטלפון או האימייל כבר מחוברים לחשבון לקוחה אחר. נסי להתחבר עם האימייל של החשבון הקיים או השתמשי ב'שכחתי סיסמה'.",
+      variant: "error",
+      needsEmailConfirmation: false
+    };
+  }
+
   if (message.includes("email confirmation")) {
     return {
       text: "החשבון נוצר בהצלחה. שלחנו לך מייל לאישור החשבון. פתחי את המייל ולחצי על הקישור, ואז תוכלי להתחבר.",
@@ -669,6 +677,9 @@ let isCustomerPasswordRecoveryMode = false;
 let publicSupabaseErrorMessage = "";
 let publicSupabaseErrorTimestamp = 0;
 let publicLoadedFromSupabase = false;
+let customerAccountIssueMessage = "";
+let customerAccountIssueTimestamp = 0;
+let isCustomerAuthSubmitting = false;
 
 function revealPublicApp() {
   document.documentElement.classList.remove("app-booting");
@@ -778,6 +789,55 @@ function mergeCustomerState(customerState) {
   state.waitlistEntries = normalizeWaitlistEntries(customerState.waitlistEntries || []);
 }
 
+function clearCustomerPrivateState() {
+  session.customerPhone = null;
+  state.users = [];
+  state.notifications = [];
+  state.waitlistEntries = [];
+}
+
+function getCustomerAccountIssueMessage(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "");
+
+  if (
+    code === "CUSTOMER_ACCOUNT_CONFLICT"
+    || message.includes("CUSTOMER_ALREADY_LINKED")
+    || message.includes("PHONE_ALREADY_REGISTERED")
+    || message.includes("כבר שייכים לחשבון לקוחה אחר")
+    || message.includes("כבר מחוברים לחשבון לקוחה אחר")
+  ) {
+    return "החשבון הזה לא חובר לעסק, כי הטלפון או האימייל כבר שייכים לחשבון לקוחה אחר. התנתקי והתחברי עם האימייל המקורי, או השתמשי ב'שכחתי סיסמה'.";
+  }
+
+  if (
+    code === "CUSTOMER_PROFILE_INCOMPLETE"
+    || message.includes("PHONE_REQUIRED_TO_CREATE_CUSTOMER")
+    || message.includes("VALID_PHONE_REQUIRED")
+    || message.includes("חסר מספר טלפון")
+  ) {
+    return "החשבון מחובר לאימייל, אבל חסרים בו פרטי לקוחה. התנתקי וצרי חשבון עם שם וטלפון, או התחברי לחשבון הקיים שלך.";
+  }
+
+  return "פרטי העסק נטענו, אבל לא הצלחנו לטעון את חשבון הלקוחה כרגע. אפשר להמשיך לצפות באתר, להתנתק ולנסות להתחבר שוב.";
+}
+
+function showCustomerAccountIssue(error) {
+  if (isCustomerAuthSubmitting) {
+    return;
+  }
+
+  const message = getCustomerAccountIssueMessage(error);
+  const now = Date.now();
+  if (message === customerAccountIssueMessage && now - customerAccountIssueTimestamp < 30_000) {
+    return;
+  }
+
+  customerAccountIssueMessage = message;
+  customerAccountIssueTimestamp = now;
+  appUi.toast(message, { variant: "warning", title: "חשבון הלקוחה לא חובר" });
+}
+
 async function refreshStateFromSupabase() {
   if (!supabaseEnabled) {
     return;
@@ -785,27 +845,43 @@ async function refreshStateFromSupabase() {
 
   isHydratingPublicState = true;
   try {
-    await syncSessionFromSupabase();
     const publicState = await supabaseApi.loadPublicState();
     if (!publicState?.business?.id) {
       throw new Error("לא נמצא עסק פעיל להצגה כרגע.");
     }
 
     mergePublicState(publicState);
+    clearCustomerPrivateState();
 
-    if (session.role === "customer") {
-      const customerState = await supabaseApi.loadCustomerState();
-      mergeCustomerState(customerState);
-    } else {
-      state.notifications = [];
-      state.waitlistEntries = [];
+    let customerAccountIssue = null;
+    try {
+      await syncSessionFromSupabase();
+
+      if (session.role === "customer") {
+        const customerState = await supabaseApi.loadCustomerState();
+        if (!customerState?.customer) {
+          const profileError = new Error("חסרים פרטי לקוחה בחשבון המחובר.");
+          profileError.code = "CUSTOMER_PROFILE_INCOMPLETE";
+          throw profileError;
+        }
+        mergeCustomerState(customerState);
+      }
+    } catch (error) {
+      clearCustomerPrivateState();
+      session.role = session.authUserId ? "customer-unavailable" : null;
+      customerAccountIssue = error;
     }
 
     publicLoadedFromSupabase = true;
     saveState();
     rerenderAll();
     window.setTimeout(focusCustomerBookingFromUrl, 0);
-    notificationCenter?.showNewBrowserNotifications();
+    if (session.role === "customer") {
+      notificationCenter?.showNewBrowserNotifications();
+    }
+    if (customerAccountIssue) {
+      showCustomerAccountIssue(customerAccountIssue);
+    }
   } catch (error) {
     publicLoadedFromSupabase = false;
     showPublicSupabaseError(error);
@@ -849,7 +925,7 @@ function setupPersonalRealtimeSubscriptions() {
   }
 
   clearRealtimeSubscriptions(personalRealtimeCleanups);
-  if (!session.authUserId) {
+  if (session.role !== "customer" || !session.authUserId || !session.customerPhone) {
     return;
   }
 
@@ -2491,13 +2567,14 @@ function renderEditors() {
 }
 
 function updateSessionUi() {
-  const customerLoggedIn = session.role === "customer";
+  const customerSessionActive = session.role === "customer" || session.role === "customer-unavailable";
+  const customerLoggedIn = session.role === "customer" && Boolean(session.customerPhone);
   const sellerLoggedIn = session.role === "seller";
   const customerUiVisible = customerLoggedIn && !sellerLoggedIn;
 
-  logoutButton.classList.toggle("is-hidden", !customerUiVisible);
+  logoutButton.classList.toggle("is-hidden", !customerSessionActive);
   myBookingsButton?.classList.toggle("is-hidden", !customerUiVisible);
-  openCustomerLogin.classList.toggle("is-hidden", customerLoggedIn || sellerLoggedIn);
+  openCustomerLogin.classList.toggle("is-hidden", customerSessionActive || sellerLoggedIn);
   openSellerLogin.classList.toggle("is-hidden", sellerLoggedIn);
   returnToOwnerButton.classList.toggle("is-hidden", !sellerLoggedIn);
   sellerSiteLogoutButton.classList.toggle("is-hidden", !sellerLoggedIn);
@@ -3053,6 +3130,7 @@ customerSignupForm?.addEventListener("submit", async (event) => {
   }
 
   if (submitButton) submitButton.disabled = true;
+  isCustomerAuthSubmitting = true;
   try {
     const registration = await supabaseApi.registerCustomer({ firstName, lastName, phone, email, password });
     if (registration?.needsEmailConfirmation) {
@@ -3076,6 +3154,7 @@ customerSignupForm?.addEventListener("submit", async (event) => {
     }
     appUi.toast(feedback.text, { variant: feedback.variant });
   } finally {
+    isCustomerAuthSubmitting = false;
     if (submitButton) submitButton.disabled = false;
   }
 });
@@ -3101,6 +3180,7 @@ customerLoginForm.addEventListener("submit", async (event) => {
   }
 
   if (submitButton) submitButton.disabled = true;
+  isCustomerAuthSubmitting = true;
   try {
     const draftName = parseFullName(
       String(bookingForm?.elements?.fullName?.value || uiState.bookingDraft.fullName || "").trim()
@@ -3117,6 +3197,7 @@ customerLoginForm.addEventListener("submit", async (event) => {
   } catch (error) {
     appUi.toast(error?.message || "לא הצלחנו להתחבר.", { variant: "error" });
   } finally {
+    isCustomerAuthSubmitting = false;
     if (submitButton) submitButton.disabled = false;
   }
 });

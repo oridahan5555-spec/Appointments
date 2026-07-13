@@ -76,6 +76,12 @@
     return client;
   }
 
+  function createClientError(message, code) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  }
+
   function normalizePhone(phone) {
     return String(phone || "").replace(/[^\d+]/g, "");
   }
@@ -536,10 +542,16 @@
     if (error) {
       const message = String(error.message || "");
       if (message.includes("CUSTOMER_ALREADY_LINKED") || message.includes("PHONE_ALREADY_REGISTERED")) {
-        throw new Error("הטלפון או האימייל כבר שייכים לחשבון לקוחה אחר.");
+        throw createClientError(
+          "הטלפון או האימייל כבר שייכים לחשבון לקוחה אחר.",
+          "CUSTOMER_ACCOUNT_CONFLICT"
+        );
       }
       if (message.includes("PHONE_REQUIRED_TO_CREATE_CUSTOMER") || message.includes("VALID_PHONE_REQUIRED")) {
-        throw new Error("התחברת, אבל חסר מספר טלפון בפרופיל. צרי קשר עם בעלת העסק כדי להשלים את הפרטים.");
+        throw createClientError(
+          "התחברת, אבל חסר מספר טלפון בפרופיל.",
+          "CUSTOMER_PROFILE_INCOMPLETE"
+        );
       }
       throw error;
     }
@@ -607,7 +619,12 @@
       };
     }
 
-    await claimCustomerAccount({ firstName, lastName, phone, email });
+    try {
+      await claimCustomerAccount({ firstName, lastName, phone, email });
+    } catch (claimError) {
+      await supabase.auth.signOut().catch(() => undefined);
+      throw claimError;
+    }
     return {
       ...data,
       needsEmailConfirmation: false
@@ -638,11 +655,12 @@
         lastName: payload?.lastName || data.user?.user_metadata?.last_name || ""
       });
     } catch (claimError) {
+      await supabase.auth.signOut().catch(() => undefined);
       const claimMessage = String(claimError?.message || "");
-      if (claimMessage.includes("PHONE_REQUIRED_TO_CREATE_CUSTOMER") || claimMessage.includes("VALID_PHONE_REQUIRED") || claimMessage.includes("חסרים פרטי")) {
+      if (claimError?.code === "CUSTOMER_PROFILE_INCOMPLETE" || claimMessage.includes("PHONE_REQUIRED_TO_CREATE_CUSTOMER") || claimMessage.includes("VALID_PHONE_REQUIRED") || claimMessage.includes("חסרים פרטי")) {
         throw new Error("התחברת, אבל חסר מספר טלפון בפרופיל. צרי קשר עם בעלת העסק כדי להשלים את הפרטים.");
       }
-      if (claimMessage.includes("CUSTOMER_ALREADY_LINKED") || claimMessage.includes("כבר שייכים")) {
+      if (claimError?.code === "CUSTOMER_ACCOUNT_CONFLICT" || claimMessage.includes("CUSTOMER_ALREADY_LINKED") || claimMessage.includes("כבר שייכים")) {
         throw new Error("הטלפון או האימייל כבר מחוברים לחשבון לקוחה אחר. אם זה החשבון שלך, נסי להתחבר עם האימייל של אותו חשבון או השתמשי בשכחתי סיסמה.");
       }
       throw claimError;

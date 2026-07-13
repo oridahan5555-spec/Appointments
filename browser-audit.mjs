@@ -33,6 +33,7 @@ function installAuditSupabase() {
   const ownerId = "188f1269-e04a-4184-882c-226f60a47d28";
   const customerId = "22222222-2222-4222-8222-222222222222";
   const otherCustomerId = "33333333-3333-4333-8333-333333333333";
+  const conflictingCustomerId = "55555555-5555-4555-8555-555555555555";
   const businessId = "11111111-1111-4111-8111-111111111111";
   const serviceId = "44444444-4444-4444-8444-444444444444";
   const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -55,7 +56,8 @@ function installAuditSupabase() {
     sessionUserId: null,
     accounts: {
       "owner@example.com": { id: ownerId, password: "correct-password", role: "owner" },
-      "existing@example.com": { id: customerId, password: "strongpass", role: "customer" }
+      "existing@example.com": { id: customerId, password: "strongpass", role: "customer" },
+      "conflict@example.com": { id: conflictingCustomerId, password: "strongpass", role: "customer" }
     },
     business: {
       id: businessId,
@@ -125,6 +127,7 @@ function installAuditSupabase() {
     notifications: [],
     waitlistEntries: [],
     passwordResetEmail: "",
+    customerLoadFailure: false,
     failNextOwnerSync: false
   });
 
@@ -204,6 +207,7 @@ function installAuditSupabase() {
       const database = load();
       database.sessionRole = null;
       database.sessionUserId = null;
+      database.customerLoadFailure = false;
       save(database);
       emitAuth("SIGNED_OUT");
     },
@@ -242,6 +246,11 @@ function installAuditSupabase() {
     },
     loadCustomerState: async () => {
       const database = load();
+      if (database.customerLoadFailure) {
+        const error = new Error("הטלפון או האימייל כבר שייכים לחשבון לקוחה אחר.");
+        error.code = "CUSTOMER_ACCOUNT_CONFLICT";
+        throw error;
+      }
       const profile = customerProfile(database);
       return clone({
         customer: profile,
@@ -424,6 +433,13 @@ function installAuditSupabase() {
   window.__AUDIT_BACKEND__ = {
     read: () => clone(load()),
     reset: () => save(fresh()),
+    activateConflictingCustomer: () => {
+      const database = load();
+      database.sessionRole = "customer";
+      database.sessionUserId = conflictingCustomerId;
+      database.customerLoadFailure = true;
+      save(database);
+    },
     failNextOwnerSync: () => {
       const database = load();
       database.failNextOwnerSync = true;
@@ -601,11 +617,18 @@ async function test(name, callback) {
 }
 
 async function waitForExpression(expression, message, attempts = 50) {
+  let lastError = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await client.evaluate(`Boolean(${expression})`)) return;
+    try {
+      if (await client.evaluate(`Boolean(${expression})`)) return;
+      lastError = null;
+    } catch (error) {
+      // Navigation can briefly leave the previous page's DOM in place.
+      lastError = error;
+    }
     await wait(100);
   }
-  throw new Error(message);
+  throw new Error(lastError ? `${message}: ${lastError.message}` : message);
 }
 
 try {
@@ -805,6 +828,30 @@ try {
     })()`);
     await waitForExpression(`window.__AUDIT_BACKEND__.read().passwordResetEmail === 'existing@example.com'`, "Password reset email was not requested");
     assert(!(await client.evaluate(`window.__AUDIT_BACKEND__.read().sessionUserId`)), "Forgot password unexpectedly signed the customer in");
+  });
+
+  await test("a conflicting customer account cannot break the public site", async () => {
+    await client.evaluate(`window.__AUDIT_BACKEND__.activateConflictingCustomer(); location.reload()`);
+    await waitForExpression(
+      `document.querySelector('#businessName')?.textContent === 'Yael nails audit'`,
+      "A customer account conflict replaced the public business"
+    );
+
+    const result = await client.evaluate(`({
+      businessName: document.querySelector('#businessName')?.textContent,
+      serviceCount: document.querySelectorAll('#servicesCategories [data-service-id]').length,
+      publicErrorVisible: document.querySelector('#businessName')?.textContent === 'לא הצלחנו לטעון את העסק',
+      logoutVisible: !document.querySelector('#logoutButton')?.classList.contains('is-hidden'),
+      myBookingsHidden: document.querySelector('#myBookingsButton')?.classList.contains('is-hidden'),
+      accountMessage: document.body.innerText.includes('החשבון הזה לא חובר לעסק')
+    })`);
+
+    assert(result.businessName === "Yael nails audit" && result.serviceCount === 1, "Public business data disappeared after an account conflict");
+    assert(!result.publicErrorVisible && result.logoutVisible && result.myBookingsHidden, "Conflicting customer session UI is unsafe or unclear");
+    assert(result.accountMessage, "Customer account conflict did not show a clear Hebrew explanation");
+
+    await client.evaluate(`document.querySelector('#logoutButton').click()`);
+    await waitForExpression(`!window.__AUDIT_BACKEND__.read().sessionUserId`, "Conflicting customer could not sign out");
   });
 
   await test("mock public layout is responsive on mobile and tablet", async () => {
