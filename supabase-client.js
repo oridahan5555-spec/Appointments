@@ -429,6 +429,38 @@
     return session?.user || null;
   }
 
+  function getRecoveryCodeFromUrl() {
+    const searchParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    return searchParams.get("code") || hashParams.get("code") || "";
+  }
+
+  async function ensurePasswordRecoverySession() {
+    const supabase = ensureClient();
+    const code = getRecoveryCodeFromUrl();
+    if (code) {
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) {
+        throw createClientError(
+          "קישור האיפוס לא תקין או שכבר פג. בקשי קישור חדש דרך 'שכחתי סיסמה'.",
+          "PASSWORD_RECOVERY_SESSION_INVALID"
+        );
+      }
+
+      return data.session || null;
+    }
+
+    const existingSession = await getSession();
+    if (existingSession?.user) {
+      return existingSession;
+    }
+
+    throw createClientError(
+      "קישור האיפוס לא תקין או שכבר פג. בקשי קישור חדש דרך 'שכחתי סיסמה'.",
+      "PASSWORD_RECOVERY_SESSION_MISSING"
+    );
+  }
+
   async function isOwnerUser() {
     const user = await getCurrentUser();
     if (!user) return false;
@@ -995,6 +1027,7 @@
     getClient: () => client,
     getSession,
     getCurrentUser,
+    ensurePasswordRecoverySession,
     isOwnerUser,
     signInOwner,
     sendOwnerPasswordReset,

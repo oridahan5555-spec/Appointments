@@ -3355,6 +3355,9 @@ customerRecoveryForm?.addEventListener("submit", async (event) => {
 
   if (submitButton) submitButton.disabled = true;
   try {
+    if (typeof supabaseApi.ensurePasswordRecoverySession === "function") {
+      await supabaseApi.ensurePasswordRecoverySession();
+    }
     await supabaseApi.updateCurrentUserPassword(newPassword);
     appUi.toast("הסיסמה עודכנה, אפשר להתחבר.", { variant: "success" });
     await supabaseApi.signOut();

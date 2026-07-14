@@ -260,6 +260,22 @@ function installAuditSupabase() {
       save(database);
       return currentUser();
     },
+    ensurePasswordRecoverySession: async () => {
+      const database = load();
+      const code = new URLSearchParams(location.search).get("code") || new URLSearchParams(location.hash.replace(/^#/, "")).get("code");
+      if (!code && database.sessionUserId) return sessionFor();
+      const account = database.accounts[String(database.passwordResetEmail || "").trim().toLowerCase()];
+      if (!code || !account || account.role !== "customer") {
+        const error = new Error("קישור האיפוס לא תקין או שכבר פג. בקשי קישור חדש דרך 'שכחתי סיסמה'.");
+        error.code = "PASSWORD_RECOVERY_SESSION_INVALID";
+        throw error;
+      }
+      database.sessionRole = "customer";
+      database.sessionUserId = account.id;
+      database.customerLoadFailure = false;
+      save(database);
+      return sessionFor();
+    },
     updateOwnerCredentials: async ({ password }) => {
       const database = load();
       if (database.sessionRole !== "owner") throw new Error("Not authorized");
@@ -472,8 +488,9 @@ function installAuditSupabase() {
       const database = load();
       const account = database.accounts[String(email || "").trim().toLowerCase()];
       if (!account || account.role !== "customer") throw new Error("Customer account not found");
-      database.sessionRole = "customer";
-      database.sessionUserId = account.id;
+      database.passwordResetEmail = String(email || "").trim().toLowerCase();
+      database.sessionRole = null;
+      database.sessionUserId = null;
       database.customerLoadFailure = false;
       save(database);
     },
